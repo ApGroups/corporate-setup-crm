@@ -186,6 +186,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 echo json_encode(['success' => false, 'error' => 'Failed to deactivate staff: ' . $e->getMessage()]);
             }
             exit;
+
+        case 'save_role_permissions':
+            $roleId = intval($_POST['role_id'] ?? 0);
+            if ($roleId <= 0) {
+                echo json_encode(['success' => false, 'error' => 'Invalid role']);
+                exit;
+            }
+
+            $role = $db->fetch("SELECT * FROM roles WHERE id = ?", [$roleId]);
+            if (!$role) {
+                echo json_encode(['success' => false, 'error' => 'Role not found']);
+                exit;
+            }
+
+            // Administrator always retains full access
+            if ($role['name'] === 'Administrator') {
+                $db->update('roles', [
+                    'permissions' => json_encode(['*']),
+                    'updated_at' => date('Y-m-d H:i:s')
+                ], 'id = :id', ['id' => $roleId]);
+                refreshSessionPermissions();
+                echo json_encode(['success' => true, 'message' => 'Administrator retains full access (*)', 'reload' => true]);
+                exit;
+            }
+
+            $posted = $_POST['permissions'] ?? [];
+            if (!is_array($posted)) {
+                $posted = [];
+            }
+
+            $allowed = [];
+            foreach (getAvailablePermissions() as $group => $slugs) {
+                foreach ($slugs as $slug) {
+                    $allowed[$slug] = true;
+                }
+            }
+
+            $clean = [];
+            foreach ($posted as $slug) {
+                $slug = sanitize((string)$slug);
+                if (isset($allowed[$slug])) {
+                    $clean[] = $slug;
+                }
+            }
+            $clean = array_values(array_unique($clean));
+
+            try {
+                $db->update('roles', [
+                    'permissions' => json_encode($clean),
+                    'updated_at' => date('Y-m-d H:i:s')
+                ], 'id = :id', ['id' => $roleId]);
+
+                logActivity($user['id'], 'update', 'Updated permissions for role: ' . $role['display_name'], 'roles', $roleId);
+                refreshSessionPermissions();
+                echo json_encode(['success' => true, 'message' => 'Role permissions saved', 'reload' => true]);
+            } catch (Exception $e) {
+                error_log('Role permission save error: ' . $e->getMessage());
+                echo json_encode(['success' => false, 'error' => 'Failed to save role permissions']);
+            }
+            exit;
     }
 }
 
@@ -212,7 +272,23 @@ $staff = $db->fetchAll(
 
 // Get lookup data
 $roles = $db->fetchAll("SELECT * FROM roles ORDER BY display_name");
-$departments = $db->fetchAll("SELECT * FROM departments ORDER BY name");
+$departments = $db->fetchAll(
+    "SELECT d.*, u.name as head_name
+     FROM departments d
+     LEFT JOIN users u ON d.head_id = u.id
+     ORDER BY d.name"
+);
+$availablePermissions = getAvailablePermissions();
+$editRoleId = intval($_GET['role_id'] ?? 0);
+$editRole = null;
+$editRolePerms = [];
+if ($tab === 'roles' && $editRoleId > 0) {
+    $editRole = $db->fetch("SELECT * FROM roles WHERE id = ?", [$editRoleId]);
+    if ($editRole) {
+        $decoded = $editRole['permissions'] ? json_decode($editRole['permissions'], true) : [];
+        $editRolePerms = is_array($decoded) ? $decoded : [];
+    }
+}
 
 ob_start();
 include 'views/staff/index.php';

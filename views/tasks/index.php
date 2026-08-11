@@ -53,11 +53,18 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label required" for="assigned_to">Assigned To</label>
-                        <select id="assigned_to" name="assigned_to" class="form-control" required>
+                        <?php
+                        $selectedAssignees = $taskAssigneeIds ?? [];
+                        if (empty($selectedAssignees)) {
+                            $selectedAssignees = [!empty($task['assigned_to']) ? (int)$task['assigned_to'] : (int)$user['id']];
+                        }
+                        ?>
+                        <select id="assigned_to" name="assigned_to[]" class="form-control" multiple required size="6">
                             <?php foreach ($staff as $s): ?>
-                                <option value="<?= $s['id'] ?>" <?= ($task['assigned_to'] ?? $user['id']) == $s['id'] ? 'selected' : '' ?>><?= sanitize($s['name']) ?></option>
+                                <option value="<?= $s['id'] ?>" <?= in_array((int)$s['id'], $selectedAssignees, true) ? 'selected' : '' ?>><?= sanitize($s['name']) ?></option>
                             <?php endforeach; ?>
                         </select>
+                        <small class="text-muted">Hold Ctrl (Windows) or Cmd (Mac) to select multiple staff.</small>
                     </div>
                     <div class="form-group">
                         <label class="form-label" for="tags">Tags</label>
@@ -156,7 +163,7 @@
                 <table class="table">
                     <tr><td style="width: 140px;">Type</td><td><?= ucwords($task['task_type']) ?></td></tr>
                     <tr><td>Priority</td><td><?= getPriorityBadge($task['priority']) ?></td></tr>
-                    <tr><td>Assigned To</td><td><?= generateAvatar($task['assigned_to_name'], 28) ?> <?= sanitize($task['assigned_to_name']) ?></td></tr>
+                    <tr><td>Assigned To</td><td><?= sanitize($task['assigned_to_names'] ?? $task['assigned_to_name'] ?? '-') ?></td></tr>
                     <tr><td>Created By</td><td><?= sanitize($task['created_by_name']) ?: 'N/A' ?></td></tr>
                     <tr><td>Company</td><td><?= $task['company_name'] ? '<a href="companies.php?action=view&id=' . $task['related_company_id'] . '">' . sanitize($task['company_name']) . '</a>' : '-' ?></td></tr>
                     <tr><td>Frequency</td><td><?= ucwords($task['frequency']) ?></td></tr>
@@ -241,9 +248,18 @@
     <!-- Quick Stats -->
     <div class="grid grid-4 gap-4 mb-6">
         <?php
-        $myPending = $db->query("SELECT COUNT(*) FROM tasks WHERE assigned_to = ? AND status IN ('pending', 'in_progress')", [$user['id']])->fetchColumn();
-        $overdue = $db->query("SELECT COUNT(*) FROM tasks WHERE assigned_to = ? AND due_date < CURDATE() AND status NOT IN ('completed', 'cancelled')", [$user['id']])->fetchColumn();
-        $completedToday = $db->query("SELECT COUNT(*) FROM tasks WHERE assigned_to = ? AND status = 'completed' AND DATE(completed_at) = CURDATE()", [$user['id']])->fetchColumn();
+        $myPending = $db->query(
+            "SELECT COUNT(DISTINCT t.id) FROM tasks t INNER JOIN task_assignees ta ON ta.task_id = t.id WHERE ta.user_id = ? AND t.status IN ('pending', 'in_progress')",
+            [$user['id']]
+        )->fetchColumn();
+        $overdue = $db->query(
+            "SELECT COUNT(DISTINCT t.id) FROM tasks t INNER JOIN task_assignees ta ON ta.task_id = t.id WHERE ta.user_id = ? AND t.due_date < CURDATE() AND t.status NOT IN ('completed', 'cancelled')",
+            [$user['id']]
+        )->fetchColumn();
+        $completedToday = $db->query(
+            "SELECT COUNT(DISTINCT t.id) FROM tasks t INNER JOIN task_assignees ta ON ta.task_id = t.id WHERE ta.user_id = ? AND t.status = 'completed' AND DATE(t.completed_at) = CURDATE()",
+            [$user['id']]
+        )->fetchColumn();
         $teamPending = $db->query("SELECT COUNT(*) FROM tasks WHERE status IN ('pending', 'in_progress')")->fetchColumn();
         ?>
         <div class="stat-card">
@@ -311,7 +327,7 @@
                                 <tr>
                                     <td>
                                         <a href="tasks.php?action=view&id=<?= $t['id'] ?>" class="table-link"><?= sanitize($t['title']) ?></a>
-                                        <br><small class="text-muted">Assigned to: <?= sanitize($t['assigned_to_name']) ?></small>
+                                        <br><small class="text-muted">Assigned to: <?= sanitize($t['assigned_to_names'] ?? $t['assigned_to_name'] ?? '-') ?></small>
                                     </td>
                                     <td><?= $t['company_name'] ? sanitize($t['company_name']) : '-' ?></td>
                                     <td><?= getPriorityBadge($t['priority']) ?></td>

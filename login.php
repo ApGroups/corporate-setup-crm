@@ -32,6 +32,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($result['success']) {
                 $redirect = $_GET['redirect'] ?? 'index.php';
+                // Prevent open redirects — allow only relative in-app paths
+                if (!is_string($redirect) || $redirect === '' || preg_match('#^(https?:)?//#i', $redirect) || strpos($redirect, '..') !== false) {
+                    $redirect = 'index.php';
+                }
+                $redirect = ltrim($redirect, '/');
                 redirect($redirect);
             } else {
                 $error = $result['error'];

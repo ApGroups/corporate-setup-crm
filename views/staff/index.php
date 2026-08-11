@@ -215,7 +215,7 @@
                             <tr>
                                 <td><strong><?= sanitize($d['name']) ?></strong></td>
                                 <td><?= sanitize($d['description']) ?: '-' ?></td>
-                                <td>-</td>
+                                <td><?= sanitize($d['head_name'] ?? '-') ?></td>
                                 <td><?= getStatusBadge($d['status']) ?></td>
                             </tr>
                         <?php endforeach; ?>
@@ -226,20 +226,79 @@
     </div>
 
 <?php elseif ($tab === 'roles'): ?>
+    <?php if ($editRole && checkPermission('manage_users')): ?>
+        <div class="page-header" style="margin-top: 0;">
+            <div>
+                <h2 class="page-title" style="font-size: 1.25rem;">Edit Permissions — <?= sanitize($editRole['display_name']) ?></h2>
+                <p class="page-subtitle"><a href="staff.php?tab=roles">Roles</a> &rsaquo; Permissions</p>
+            </div>
+            <div class="btn-group">
+                <a href="staff.php?tab=roles" class="btn btn-outline">Back</a>
+            </div>
+        </div>
+
+        <form id="rolePermissionsForm" method="POST" action="staff.php">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="save_role_permissions">
+            <input type="hidden" name="role_id" value="<?= intval($editRole['id']) ?>">
+
+            <?php if ($editRole['name'] === 'Administrator'): ?>
+                <div class="alert alert-info mb-4">
+                    <i class="fas fa-info-circle"></i>
+                    <div class="alert-content">Administrator always has full access (<code>*</code>). Saving will keep full access.</div>
+                </div>
+            <?php endif; ?>
+
+            <div class="card">
+                <div class="card-body">
+                    <?php foreach ($availablePermissions as $group => $slugs): ?>
+                        <div class="mb-4">
+                            <h4 style="margin-bottom: 0.75rem;"><?= sanitize($group) ?></h4>
+                            <div class="grid grid-2 gap-2">
+                                <?php foreach ($slugs as $slug): ?>
+                                    <label class="flex items-center gap-2" style="font-weight: normal;">
+                                        <input type="checkbox"
+                                               name="permissions[]"
+                                               value="<?= sanitize($slug) ?>"
+                                               <?= in_array($slug, $editRolePerms, true) || in_array('*', $editRolePerms, true) ? 'checked' : '' ?>
+                                               <?= $editRole['name'] === 'Administrator' ? 'disabled' : '' ?>>
+                                        <span><?= sanitize($slug) ?></span>
+                                    </label>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <div class="card-footer flex justify-end">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Permissions</button>
+                </div>
+            </div>
+        </form>
+    <?php else: ?>
     <div class="card">
         <div class="card-header"><h3 class="card-title">User Roles</h3></div>
         <div class="card-body p-0">
             <div class="table-container">
                 <table class="table">
                     <thead>
-                        <tr><th>Role</th><th>Description</th><th>System</th></tr>
+                        <tr><th>Role</th><th>Description</th><th>Permissions</th><th>System</th><th></th></tr>
                     </thead>
                     <tbody>
                         <?php foreach ($roles as $r): ?>
+                            <?php
+                            $perms = $r['permissions'] ? json_decode($r['permissions'], true) : [];
+                            $permCount = is_array($perms) ? (in_array('*', $perms, true) ? 'All (*)' : count($perms)) : 0;
+                            ?>
                             <tr>
                                 <td><strong><?= sanitize($r['display_name']) ?></strong></td>
                                 <td><?= sanitize($r['description']) ?: '-' ?></td>
+                                <td><?= is_string($permCount) ? sanitize($permCount) : ((int)$permCount . ' permissions') ?></td>
                                 <td><?= $r['is_system'] ? '<span class="badge badge-info">System</span>' : '<span class="badge badge-secondary">Custom</span>' ?></td>
+                                <td>
+                                    <?php if (checkPermission('manage_users')): ?>
+                                        <a href="staff.php?tab=roles&role_id=<?= (int)$r['id'] ?>" class="btn btn-sm btn-outline"><i class="fas fa-key"></i> Permissions</a>
+                                    <?php endif; ?>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -247,6 +306,7 @@
             </div>
         </div>
     </div>
+    <?php endif; ?>
 <?php endif; ?>
 
 <?php endif; ?>

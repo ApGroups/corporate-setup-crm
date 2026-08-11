@@ -86,15 +86,59 @@
             <div class="card-header"><h3 class="card-title">Registration Types</h3></div>
             <div class="card-body">
                 <p>Configure available registration types.</p>
-                <a href="settings.php?tab=registrations" class="btn btn-outline mt-2">Manage Types</a>
+                <a href="settings.php?tab=registrations" class="btn btn-outline mt-2">View Types</a>
             </div>
         </div>
         <div class="card">
             <div class="card-header"><h3 class="card-title">Industries</h3></div>
             <div class="card-body">
                 <p>Manage industry categories.</p>
-                <a href="settings.php?tab=industries" class="btn btn-outline mt-2">Manage Industries</a>
+                <a href="settings.php?tab=industries" class="btn btn-outline mt-2">View Industries</a>
             </div>
+        </div>
+    </div>
+
+<?php elseif ($tab === 'registrations'): ?>
+    <?php
+    $registrationTypes = $db->fetchAll("SELECT * FROM registration_types ORDER BY name");
+    ?>
+    <div class="card">
+        <div class="card-header"><h3 class="card-title">Registration Types</h3></div>
+        <div class="card-body p-0">
+            <table class="table">
+                <thead><tr><th>Name</th><th>Description</th><th>Status</th></tr></thead>
+                <tbody>
+                    <?php foreach ($registrationTypes as $rt): ?>
+                        <tr>
+                            <td><?= sanitize($rt['name']) ?></td>
+                            <td><?= sanitize($rt['description'] ?? '-') ?></td>
+                            <td><?= getStatusBadge($rt['status'] ?? 'active') ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+<?php elseif ($tab === 'industries'): ?>
+    <?php
+    $industries = $db->fetchAll("SELECT * FROM industries ORDER BY name");
+    ?>
+    <div class="card">
+        <div class="card-header"><h3 class="card-title">Industries</h3></div>
+        <div class="card-body p-0">
+            <table class="table">
+                <thead><tr><th>Name</th><th>Description</th><th>Status</th></tr></thead>
+                <tbody>
+                    <?php foreach ($industries as $ind): ?>
+                        <tr>
+                            <td><?= sanitize($ind['name']) ?></td>
+                            <td><?= sanitize($ind['description'] ?? '-') ?></td>
+                            <td><?= getStatusBadge($ind['status'] ?? 'active') ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
     </div>
 

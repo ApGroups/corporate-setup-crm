@@ -49,7 +49,19 @@ class EnvLoader {
     }
 
     public static function get($key, $default = null) {
-        return self::$env[$key] ?? $_ENV[$key] ?? getenv($key) ?: $default;
+        // Preserve empty-string values (e.g. local MySQL root with no password).
+        // The `?:` operator incorrectly treats "" as missing and falls back to $default.
+        if (array_key_exists($key, self::$env)) {
+            return self::$env[$key];
+        }
+        if (array_key_exists($key, $_ENV)) {
+            return $_ENV[$key];
+        }
+        $fromGetenv = getenv($key);
+        if ($fromGetenv !== false) {
+            return $fromGetenv;
+        }
+        return $default;
     }
 
     public static function getAll() {

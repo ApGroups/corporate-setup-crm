@@ -21,6 +21,7 @@ require_once __DIR__ . '/includes/auth.php';
 
 // User must be logged in
 requireLogin();
+requirePermission('view_registrations');
 
 $pageTitle = 'Registrations';
 $activeNav = 'registrations';

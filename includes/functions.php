@@ -195,7 +195,7 @@ function notify($userId, $title, $message, $type = 'info', $actionUrl = null) {
             'title' => $title,
             'message' => $message,
             'type' => $type,
-            'action_url' => $actionUrl,
+            'link' => $actionUrl,
             'is_read' => 0,
             'created_at' => date('Y-m-d H:i:s')
         ]);
@@ -217,7 +217,7 @@ function notifyMultiple($userIds, $title, $message, $type = 'info', $actionUrl =
                 'title' => $title,
                 'message' => $message,
                 'type' => $type,
-                'action_url' => $actionUrl,
+                'link' => $actionUrl,
                 'is_read' => 0,
                 'created_at' => date('Y-m-d H:i:s')
             ]);
@@ -230,7 +230,70 @@ function notifyMultiple($userIds, $title, $message, $type = 'info', $actionUrl =
     }
 }
 
+/**
+ * Known permission slugs used across the CRM (for role editor UI).
+ */
+function getAvailablePermissions(): array
+{
+    return [
+        'Dashboard' => ['view_dashboard'],
+        'Companies' => ['view_companies', 'manage_companies', 'view_contacts', 'manage_contacts'],
+        'Registrations' => ['view_registrations', 'manage_registrations'],
+        'Communications' => ['view_communications', 'manage_communications'],
+        'Documents' => ['view_documents', 'manage_documents', 'upload_documents'],
+        'Compliance' => ['view_compliance', 'manage_compliance', 'view_contracts'],
+        'Elite' => ['view_elite'],
+        'Tasks' => ['view_tasks', 'manage_tasks'],
+        'Meetings' => ['view_meetings', 'manage_meetings'],
+        'Calendar' => ['view_calendar'],
+        'Opportunities' => ['view_opportunities', 'manage_opportunities'],
+        'Reports' => ['view_reports', 'submit_reports', 'approve_reports', 'export_data'],
+        'Staff' => ['view_users', 'manage_users'],
+        'Settings' => ['view_settings', 'manage_settings', 'backup_system'],
+        'Activity' => ['view_logs'],
+    ];
+}
+
+/**
+ * Reload role permissions into the current session from the database.
+ */
+function refreshSessionPermissions(): void
+{
+    if (empty($_SESSION['user_id'])) {
+        return;
+    }
+
+    try {
+        $db = Database::getInstance();
+        $row = $db->fetch(
+            "SELECT r.name as role_name, r.permissions
+             FROM users u
+             JOIN roles r ON u.role_id = r.id
+             WHERE u.id = ?",
+            [$_SESSION['user_id']]
+        );
+        if ($row) {
+            $_SESSION['user_role'] = $row['role_name'];
+            $perms = $row['permissions'] ? json_decode($row['permissions'], true) : [];
+            $_SESSION['permissions'] = is_array($perms) ? $perms : [];
+        }
+    } catch (Exception $e) {
+        error_log('Failed to refresh session permissions: ' . $e->getMessage());
+    }
+}
+
 function checkPermission($permission) {
+    if (!isset($_SESSION['user_id'])) {
+        return false;
+    }
+
+    // Always reload from DB so permission edits take effect immediately
+    static $loadedForRequest = false;
+    if (!$loadedForRequest) {
+        refreshSessionPermissions();
+        $loadedForRequest = true;
+    }
+
     if (!isset($_SESSION['user_role']) || !isset($_SESSION['permissions'])) {
         return false;
     }
@@ -242,15 +305,30 @@ function checkPermission($permission) {
         return true;
     }
 
-    return in_array($permission, $permissions);
+    if (in_array('*', $permissions, true)) {
+        return true;
+    }
+
+    return in_array($permission, $permissions, true);
 }
 
 function requirePermission($permission) {
     if (!checkPermission($permission)) {
         http_response_code(403);
-        require 'views/errors/403.php';
+        require __DIR__ . '/../views/errors/403.php';
         exit();
     }
+}
+
+function requireAnyPermission(array $permissions) {
+    foreach ($permissions as $permission) {
+        if (checkPermission($permission)) {
+            return;
+        }
+    }
+    http_response_code(403);
+    require __DIR__ . '/../views/errors/403.php';
+    exit();
 }
 
 function getCurrentUserId() {

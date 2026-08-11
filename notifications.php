@@ -35,6 +35,13 @@ $user = getCurrentUser();
 // Mark as read
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Content-Type: application/json');
+
+    $csrfToken = $_POST['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+    if (!$csrfToken || !Security::validateCSRFToken($csrfToken)) {
+        echo json_encode(['success' => false, 'error' => 'Invalid security token']);
+        exit;
+    }
+
     if (isset($_POST['mark_read'])) {
         $id = intval($_POST['mark_read']);
         $db->update('notifications', ['is_read' => 1, 'read_at' => date('Y-m-d H:i:s')], 'id = :id AND user_id = :uid', ['id' => $id, 'uid' => $user['id']]);

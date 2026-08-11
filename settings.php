@@ -25,6 +25,7 @@ require_once __DIR__ . '/includes/auth.php';
 
 // User must be logged in
 requireLogin();
+requirePermission('view_settings');
 
 $pageTitle = 'Settings';
 $activeNav = 'settings';
@@ -42,6 +43,8 @@ foreach ($settings as $s) {
 
 // Handle POST requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requirePermission('manage_settings');
+
     if (!isset($_POST['csrf_token']) || !Security::validateCSRFToken($_POST['csrf_token'])) {
         flashMessage('danger', 'Invalid security token');
         redirect('settings.php');
@@ -49,6 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     switch ($tab) {
         case 'general':
+        case 'notifications':
             foreach ($_POST as $key => $value) {
                 if ($key !== 'csrf_token' && $key !== 'submit') {
                     $db->query(
@@ -58,9 +62,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     );
                 }
             }
-            logActivity($user['id'], 'update', 'Updated general settings');
+            logActivity($user['id'], 'update', 'Updated ' . $tab . ' settings');
             flashMessage('success', 'Settings updated successfully');
-            redirect('settings.php?tab=general');
+            redirect('settings.php?tab=' . urlencode($tab));
             break;
     }
 }

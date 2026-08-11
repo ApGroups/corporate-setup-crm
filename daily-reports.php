@@ -8,23 +8,23 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Configuration
 require_once __DIR__ . '/config/config.php';
 require_once __DIR__ . '/config/database.php';
-
-// Helper Functions
 require_once __DIR__ . '/helpers/security.php';
 require_once __DIR__ . '/helpers/validators.php';
 require_once __DIR__ . '/helpers/formatters.php';
-
-// General Functions
 require_once __DIR__ . '/includes/functions.php';
-
-// Authentication
 require_once __DIR__ . '/includes/auth.php';
 
-// User must be logged in
 requireLogin();
+
+$canViewAllReports = checkPermission('view_reports') || checkPermission('approve_reports');
+$canSubmitReports = checkPermission('submit_reports') || checkPermission('view_reports') || checkPermission('approve_reports');
+$canApproveReports = checkPermission('approve_reports');
+
+if (!$canSubmitReports && !$canViewAllReports) {
+    requirePermission('submit_reports');
+}
 
 $pageTitle = 'Daily Reports';
 $activeNav = 'daily-reports';
@@ -46,22 +46,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     switch ($action) {
         case 'save':
+            if (!$canSubmitReports) {
+                echo json_encode(['success' => false, 'error' => 'You are not authorized to submit reports']);
+                exit;
+            }
+
+            $reportDate = $_POST['report_date'] ?? '';
+            $activities = trim((string)($_POST['activities'] ?? ''));
+            $status = sanitize($_POST['status'] ?? 'draft');
+
+            if ($reportDate === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $reportDate)) {
+                echo json_encode(['success' => false, 'error' => 'Valid report date is required']);
+                exit;
+            }
+
+            if ($activities === '') {
+                echo json_encode(['success' => false, 'error' => 'Activities are required']);
+                exit;
+            }
+
+            if (!in_array($status, ['draft', 'submitted'], true)) {
+                $status = 'draft';
+            }
+
             $reportData = [
                 'user_id' => $user['id'],
-                'report_date' => $_POST['report_date'],
+                'report_date' => $reportDate,
                 'time_started' => $_POST['time_started'] ?: null,
                 'time_finished' => $_POST['time_finished'] ?: null,
-                'activities' => sanitize($_POST['activities']),
+                'activities' => sanitize($activities),
                 'projects_worked' => sanitize($_POST['projects_worked'] ?? ''),
                 'clients_contacted' => sanitize($_POST['clients_contacted'] ?? ''),
                 'issues_encountered' => sanitize($_POST['issues_encountered'] ?? ''),
-                'tomorrow_plan' => sanitize($_POST['tomorrow_plan'] ?? ''),
-                'status' => sanitize($_POST['status'] ?? 'draft'),
-                'created_at' => date('Y-m-d H:i:s')
+                'status' => $status,
             ];
 
             try {
-                // Check if report exists for this date
                 $existing = $db->fetch(
                     "SELECT id, status FROM daily_reports WHERE user_id = ? AND report_date = ?",
                     [$user['id'], $reportData['report_date']]
@@ -75,56 +95,101 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($existing) {
                     $db->update('daily_reports', $reportData, 'id = :id', ['id' => $existing['id']]);
                     logActivity($user['id'], 'update', 'Updated daily report', 'daily_reports', $existing['id']);
-                    echo json_encode(['success' => true, 'message' => 'Report updated successfully']);
+                    echo json_encode([
+                        'success' => true,
+                        'message' => 'Report updated successfully',
+                        'redirect' => 'daily-reports.php?action=view&id=' . $existing['id']
+                    ]);
                 } else {
+                    $reportData['created_at'] = date('Y-m-d H:i:s');
                     $newId = $db->insert('daily_reports', $reportData);
                     logActivity($user['id'], 'create', 'Created daily report', 'daily_reports', $newId);
-                    echo json_encode(['success' => true, 'message' => 'Report saved successfully', 'id' => $newId]);
+                    echo json_encode([
+                        'success' => true,
+                        'message' => 'Report saved successfully',
+                        'id' => $newId,
+                        'redirect' => 'daily-reports.php?action=view&id=' . $newId
+                    ]);
                 }
             } catch (Exception $e) {
+                error_log('Daily report save error: ' . $e->getMessage());
                 echo json_encode(['success' => false, 'error' => 'Failed to save report']);
             }
             exit;
 
         case 'review':
-            if ($id > 0) {
-                $status = sanitize($_POST['status']);
-                $comments = sanitize($_POST['reviewer_comments'] ?? '');
+            if (!$canApproveReports) {
+                echo json_encode(['success' => false, 'error' => 'You are not authorized to review reports']);
+                exit;
+            }
 
-                try {
-                    $db->update('daily_reports', [
-                        'status' => $status,
-                        'reviewed_by' => $user['id'],
-                        'reviewed_at' => date('Y-m-d H:i:s'),
-                        'reviewer_comments' => $comments
-                    ], 'id = :id', ['id' => $id]);
+            if ($id <= 0) {
+                echo json_encode(['success' => false, 'error' => 'Invalid report ID']);
+                exit;
+            }
 
-                    logActivity($user['id'], $status, 'Reviewed daily report', 'daily_reports', $id);
-                    echo json_encode(['success' => true, 'message' => 'Report reviewed successfully']);
-                } catch (Exception $e) {
-                    echo json_encode(['success' => false, 'error' => 'Failed to review report']);
+            $status = sanitize($_POST['status'] ?? '');
+            $comments = sanitize($_POST['reviewer_comments'] ?? '');
+
+            if (!in_array($status, ['reviewed', 'approved'], true)) {
+                echo json_encode(['success' => false, 'error' => 'Invalid review status']);
+                exit;
+            }
+
+            try {
+                $target = $db->fetch("SELECT id, status FROM daily_reports WHERE id = ?", [$id]);
+                if (!$target) {
+                    echo json_encode(['success' => false, 'error' => 'Report not found']);
+                    exit;
                 }
+
+                $db->update('daily_reports', [
+                    'status' => $status,
+                    'reviewed_by' => $user['id'],
+                    'reviewed_at' => date('Y-m-d H:i:s'),
+                    'reviewer_comments' => $comments
+                ], 'id = :id', ['id' => $id]);
+
+                logActivity($user['id'], $status, 'Reviewed daily report', 'daily_reports', $id);
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Report reviewed successfully',
+                    'redirect' => 'daily-reports.php?action=view&id=' . $id
+                ]);
+            } catch (Exception $e) {
+                error_log('Daily report review error: ' . $e->getMessage());
+                echo json_encode(['success' => false, 'error' => 'Failed to review report']);
             }
             exit;
     }
+
+    echo json_encode(['success' => false, 'error' => 'Unknown action']);
+    exit;
 }
 
 // Filter parameters
-$userId = intval($_GET['user'] ?? ($user['role'] === 'Administrator' || $user['role'] === 'Management' ? 0 : $user['id']));
+$filterUserParam = array_key_exists('user', $_GET) ? $_GET['user'] : null;
+if ($canViewAllReports) {
+    $userId = ($filterUserParam === null || $filterUserParam === '') ? 0 : intval($filterUserParam);
+} else {
+    $userId = $user['id'];
+}
+
 $status = $_GET['status'] ?? '';
 $dateFrom = $_GET['from'] ?? date('Y-m-01');
 $dateTo = $_GET['to'] ?? date('Y-m-t');
 $page = intval($_GET['page'] ?? 1);
 
-if (!$userId) $userId = $user['id'];
-
 // Build query
 $where = ['1=1'];
 $params = [];
 
-if ($userId) {
+if ($userId > 0) {
     $where[] = 'dr.user_id = :user_id';
     $params['user_id'] = $userId;
+} elseif (!$canViewAllReports) {
+    $where[] = 'dr.user_id = :user_id';
+    $params['user_id'] = $user['id'];
 }
 
 if ($status) {
@@ -148,7 +213,6 @@ $totalCount = $db->query("SELECT COUNT(*) FROM daily_reports dr WHERE $whereClau
 $perPage = 30;
 $pagination = paginate($totalCount, $page, $perPage);
 
-// Get reports
 $reports = $db->fetchAll(
     "SELECT dr.*, u.name as user_name, d.name as department_name,
             rv.name as reviewer_name
@@ -162,12 +226,9 @@ $reports = $db->fetchAll(
     $params
 );
 
-// Get staff for filter
 $staff = $db->fetchAll("SELECT id, name FROM users WHERE status = 'active' ORDER BY name");
 
-// Single report
 $report = null;
-
 if ($id > 0) {
     $report = $db->fetch(
         "SELECT dr.*, u.name as user_name, u.role_id, d.name as department_name,
@@ -180,13 +241,34 @@ if ($id > 0) {
          WHERE dr.id = ?",
         [$id]
     );
+
+    // IDOR: staff without view_reports may only open their own reports
+    if ($report && !$canViewAllReports && intval($report['user_id']) !== intval($user['id'])) {
+        http_response_code(403);
+        require 'views/errors/403.php';
+        exit;
+    }
 }
 
-// Check today's report
 $todayReport = $db->fetch(
     "SELECT * FROM daily_reports WHERE user_id = ? AND report_date = CURDATE()",
     [$user['id']]
 );
+
+// Prefill submit/edit form with today's draft when no explicit id
+if (in_array($action, ['submit', 'new'], true) && !$report && $todayReport) {
+    $report = $todayReport;
+    if ($todayReport['status'] === 'draft') {
+        $action = 'edit';
+        $id = intval($todayReport['id']);
+    }
+}
+
+if ($action === 'edit' && $report && (intval($report['user_id']) !== intval($user['id']) || $report['status'] !== 'draft')) {
+    http_response_code(403);
+    require 'views/errors/403.php';
+    exit;
+}
 
 ob_start();
 include 'views/reports/daily.php';

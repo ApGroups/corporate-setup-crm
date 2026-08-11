@@ -68,7 +68,13 @@ class Auth {
         if ($this->hasRole('Administrator')) {
             return true;
         }
-        return isset($_SESSION['permissions']) && in_array($permission, $_SESSION['permissions']);
+        if (!isset($_SESSION['permissions']) || !is_array($_SESSION['permissions'])) {
+            return false;
+        }
+        if (in_array('*', $_SESSION['permissions'], true)) {
+            return true;
+        }
+        return in_array($permission, $_SESSION['permissions'], true);
     }
 
     public function getCurrentUser() {
@@ -171,8 +177,8 @@ class Auth {
     private function recordLogin($userId, $success) {
         $this->db->insert('login_history', [
             'user_id' => $userId,
-            'ip_address' => $_SERVER['REMOTE_ADDR'],
-            'user_agent' => $_SERVER['HTTP_USER_AGENT'],
+            'ip_address' => $_SERVER['REMOTE_ADDR'] ?? 'cli',
+            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'cli',
             'success' => $success ? 1 : 0,
             'created_at' => date('Y-m-d H:i:s')
         ]);

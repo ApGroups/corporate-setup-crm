@@ -25,6 +25,7 @@ require_once __DIR__ . '/includes/auth.php';
 
 // User must be logged in
 requireLogin();
+requirePermission('view_documents');
 
 $pageTitle = 'Documents';
 $activeNav = 'documents';
@@ -43,6 +44,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!isset($_POST['csrf_token']) || !Security::validateCSRFToken($_POST['csrf_token'])) {
         echo json_encode(['success' => false, 'error' => 'Invalid security token']);
+        exit;
+    }
+
+    if (!checkPermission('manage_documents') && !checkPermission('upload_documents')) {
+        echo json_encode(['success' => false, 'error' => 'Not authorized to manage documents']);
         exit;
     }
 

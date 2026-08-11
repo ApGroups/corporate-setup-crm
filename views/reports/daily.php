@@ -14,9 +14,12 @@ $statusOptions = ['draft', 'submitted', 'reviewed', 'approved'];
         </div>
     </div>
 
-    <form id="reportForm" method="POST">
+    <form id="reportForm" method="POST" action="daily-reports.php">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save">
+        <?php if (!empty($report['id'])): ?>
+            <input type="hidden" name="id" value="<?= intval($report['id']) ?>">
+        <?php endif; ?>
 
         <div class="grid grid-2 gap-4">
             <div class="card">
@@ -81,15 +84,11 @@ $statusOptions = ['draft', 'submitted', 'reviewed', 'approved'];
             </div>
 
             <div class="card">
-                <div class="card-header"><h3 class="card-title">Issues & Plans</h3></div>
+                <div class="card-header"><h3 class="card-title">Issues</h3></div>
                 <div class="card-body">
                     <div class="form-group">
                         <label class="form-label" for="issues_encountered">Issues Encountered</label>
-                        <textarea id="issues_encountered" name="issues_encountered" class="form-control" rows="3"><?= sanitize($report['issues_encountered'] ?? '') ?></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="tomorrow_plan">Tomorrow's Plan</label>
-                        <textarea id="tomorrow_plan" name="tomorrow_plan" class="form-control" rows="3"><?= sanitize($report['tomorrow_plan'] ?? '') ?></textarea>
+                        <textarea id="issues_encountered" name="issues_encountered" class="form-control" rows="6"><?= sanitize($report['issues_encountered'] ?? '') ?></textarea>
                     </div>
                 </div>
             </div>
@@ -111,7 +110,7 @@ $statusOptions = ['draft', 'submitted', 'reviewed', 'approved'];
             <?php if ($report['user_id'] == $user['id'] && $report['status'] === 'draft'): ?>
                 <a href="daily-reports.php?action=edit&id=<?= $report['id'] ?>" class="btn btn-outline"><i class="fas fa-edit"></i> Edit</a>
             <?php endif; ?>
-            <?php if (in_array($user['role'], ['Administrator', 'Management']) && $report['status'] === 'submitted'): ?>
+            <?php if (!empty($canApproveReports) && $report['status'] === 'submitted'): ?>
                 <button onclick="openModal('reviewModal')" class="btn btn-primary"><i class="fas fa-check"></i> Review</button>
             <?php endif; ?>
         </div>
@@ -154,21 +153,14 @@ $statusOptions = ['draft', 'submitted', 'reviewed', 'approved'];
             </div>
         </div>
         <div class="card">
-            <div class="card-header"><h3 class="card-title">Issues & Plans</h3></div>
+            <div class="card-header"><h3 class="card-title">Issues Encountered</h3></div>
             <div class="card-body">
-                <div class="mb-4">
-                    <strong>Issues Encountered:</strong>
-                    <p class="text-muted" style="white-space: pre-wrap;"><?= sanitize($report['issues_encountered']) ?: 'None reported' ?></p>
-                </div>
-                <div>
-                    <strong>Tomorrow's Plan:</strong>
-                    <p class="text-muted" style="white-space: pre-wrap;"><?= sanitize($report['tomorrow_plan']) ?: 'Not specified' ?></p>
-                </div>
+                <p class="text-muted" style="white-space: pre-wrap;"><?= sanitize($report['issues_encountered']) ?: 'None reported' ?></p>
             </div>
         </div>
     </div>
 
-    <?php if ($report['status'] === 'approved' && $report['reviewer_comments']): ?>
+    <?php if (in_array($report['status'], ['reviewed', 'approved'], true) && $report['reviewer_comments']): ?>
     <div class="card mt-4">
         <div class="card-header"><h3 class="card-title">Reviewer Comments</h3></div>
         <div class="card-body">
@@ -228,6 +220,14 @@ $statusOptions = ['draft', 'submitted', 'reviewed', 'approved'];
                 <a href="daily-reports.php?action=submit" style="margin-left: 0.5rem;">Submit Now</a>
             </div>
         </div>
+    <?php elseif ($todayReport['status'] === 'draft'): ?>
+        <div class="alert alert-warning mb-4">
+            <i class="fas fa-exclamation-circle"></i>
+            <div class="alert-content">
+                <strong>Draft saved:</strong> Today's report is still a draft.
+                <a href="daily-reports.php?action=edit&id=<?= intval($todayReport['id']) ?>" style="margin-left: 0.5rem;">Continue Editing</a>
+            </div>
+        </div>
     <?php else: ?>
         <div class="alert alert-success mb-4">
             <i class="fas fa-check-circle"></i>
@@ -239,7 +239,7 @@ $statusOptions = ['draft', 'submitted', 'reviewed', 'approved'];
     <div class="card mb-6">
         <div class="card-body">
             <form method="GET" class="flex gap-4 items-center flex-wrap">
-                <?php if ($user['role'] === 'Administrator' || $user['role'] === 'Management'): ?>
+                <?php if (!empty($canViewAllReports)): ?>
                     <select name="user" class="form-control">
                         <option value="">All Staff</option>
                         <?php foreach ($staff as $s): ?>

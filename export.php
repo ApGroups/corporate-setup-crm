@@ -25,6 +25,7 @@ require_once __DIR__ . '/includes/auth.php';
 
 // User must be logged in
 requireLogin();
+requirePermission('export_data');
 
 $db = Database::getInstance();
 $user = getCurrentUser();
@@ -113,7 +114,11 @@ switch ($type) {
     case 'tasks':
         $data = $db->fetchAll(
             "SELECT t.title, t.task_type, t.status, t.priority, t.due_date,
-                    t.assigned_to_name as assigned_to, t.created_at, t.completed_at
+                    (SELECT GROUP_CONCAT(u2.name ORDER BY u2.name SEPARATOR ', ')
+                     FROM task_assignees ta2
+                     JOIN users u2 ON u2.id = ta2.user_id
+                     WHERE ta2.task_id = t.id) as assigned_to,
+                    t.created_at, t.completed_at
              FROM tasks t
              WHERE t.created_at BETWEEN ? AND ?
              ORDER BY t.created_at DESC",

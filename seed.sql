@@ -8,13 +8,13 @@ SET NAMES utf8mb4;
 -- --------------------------------------------------------
 INSERT INTO `roles` (`name`, `display_name`, `description`, `permissions`, `is_system`) VALUES
 ('Administrator', 'Administrator', 'Full system access', '["*"]', 1),
-('Compliance', 'Compliance Officer', 'Manages compliance and regulatory matters', '["view_companies","view_registrations","manage_registrations","view_documents","manage_documents","view_compliance","manage_compliance","view_tasks","manage_tasks","view_reports","export_data"]', 1),
-('Business Development', 'Business Development', 'Manages client relationships and opportunities', '["view_companies","manage_companies","view_contacts","manage_contacts","view_communications","manage_communications","view_opportunities","manage_opportunities","view_tasks","manage_tasks","view_meetings","manage_meetings"]', 1),
-('Operations', 'Operations', 'Handles daily operations', '["view_companies","view_registrations","view_tasks","manage_tasks","view_documents","upload_documents","submit_reports","view_calendar"]', 1),
+('Compliance', 'Compliance Officer', 'Manages compliance and regulatory matters', '["view_companies","view_registrations","manage_registrations","view_documents","manage_documents","view_compliance","manage_compliance","view_tasks","manage_tasks","view_reports","export_data","view_elite"]', 1),
+('Business Development', 'Business Development', 'Manages client relationships and opportunities', '["view_companies","manage_companies","view_contacts","manage_contacts","view_communications","manage_communications","view_opportunities","manage_opportunities","view_tasks","manage_tasks","view_meetings","manage_meetings","submit_reports"]', 1),
+('Operations', 'Operations', 'Handles daily operations', '["view_companies","view_registrations","view_tasks","manage_tasks","view_documents","upload_documents","submit_reports","view_calendar","view_reports"]', 1),
 ('Legal', 'Legal Officer', 'Manages legal matters and contracts', '["view_companies","view_documents","manage_documents","view_tasks","manage_tasks","view_compliance","manage_compliance","view_contracts"]', 1),
 ('IT', 'IT Support', 'Technical support and system management', '["view_settings","manage_settings","view_users","manage_users","view_logs","export_data","backup_system"]', 1),
-('Marketing', 'Marketing', 'Marketing and communications', '["view_companies","view_contacts","manage_contacts","view_tasks","manage_tasks","view_meetings","manage_meetings"]', 1),
-('Management', 'Management', 'Executive oversight', '["view_companies","view_registrations","view_tasks","view_reports","view_users","view_compliance","view_opportunities","approve_reports","export_data"]', 1);
+('Marketing', 'Marketing', 'Marketing and communications', '["view_companies","view_contacts","manage_contacts","view_tasks","manage_tasks","view_meetings","manage_meetings","submit_reports"]', 1),
+('Management', 'Management', 'Executive oversight', '["view_companies","view_registrations","view_tasks","view_reports","view_users","view_compliance","view_opportunities","approve_reports","export_data","view_elite","submit_reports","view_logs","view_calendar","view_settings"]', 1);
 
 -- --------------------------------------------------------
 -- Default Departments

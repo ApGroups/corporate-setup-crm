@@ -70,7 +70,9 @@ try {
     )->fetchColumn();
 
     $myPendingTasks = $db->query(
-        "SELECT COUNT(*) FROM tasks WHERE assigned_to = ? AND status IN ('pending', 'in_progress')",
+        "SELECT COUNT(DISTINCT t.id) FROM tasks t
+         INNER JOIN task_assignees ta ON ta.task_id = t.id
+         WHERE ta.user_id = ? AND t.status IN ('pending', 'in_progress')",
         [$user['id']]
     )->fetchColumn();
 
@@ -151,7 +153,8 @@ try {
         "SELECT t.*, c.company_name
          FROM tasks t
          LEFT JOIN companies c ON t.related_company_id = c.id
-         WHERE t.assigned_to = ? AND t.status IN ('pending', 'in_progress')
+         INNER JOIN task_assignees ta ON ta.task_id = t.id
+         WHERE ta.user_id = ? AND t.status IN ('pending', 'in_progress')
          ORDER BY t.due_date ASC, FIELD(t.priority, 'urgent', 'high', 'medium', 'low')
          LIMIT 5",
         [$user['id']]
