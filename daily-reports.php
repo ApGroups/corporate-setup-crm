@@ -95,6 +95,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($existing) {
                     $db->update('daily_reports', $reportData, 'id = :id', ['id' => $existing['id']]);
                     logActivity($user['id'], 'update', 'Updated daily report', 'daily_reports', $existing['id']);
+                    createOperationNotification((int) $user['id'], 'Daily report updated', 'Daily report updated successfully.', 'success', 'daily-reports.php?action=view&id=' . $existing['id'], [
+                        'related_type' => 'daily_reports',
+                        'related_id' => $existing['id']
+                    ]);
                     echo json_encode([
                         'success' => true,
                         'message' => 'Report updated successfully',
@@ -104,6 +108,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $reportData['created_at'] = date('Y-m-d H:i:s');
                     $newId = $db->insert('daily_reports', $reportData);
                     logActivity($user['id'], 'create', 'Created daily report', 'daily_reports', $newId);
+                    createOperationNotification((int) $user['id'], 'Daily report submitted', 'Daily report saved successfully.', 'success', 'daily-reports.php?action=view&id=' . $newId, [
+                        'related_type' => 'daily_reports',
+                        'related_id' => $newId
+                    ]);
                     echo json_encode([
                         'success' => true,
                         'message' => 'Report saved successfully',
@@ -151,6 +159,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ], 'id = :id', ['id' => $id]);
 
                 logActivity($user['id'], $status, 'Reviewed daily report', 'daily_reports', $id);
+                createOperationNotification((int) $user['id'], 'Daily report reviewed', 'Daily report reviewed successfully.', 'success', 'daily-reports.php?action=view&id=' . $id, [
+                    'related_type' => 'daily_reports',
+                    'related_id' => $id
+                ]);
+                $reportOwner = $db->fetch("SELECT u.id, u.name, u.email FROM daily_reports dr JOIN users u ON dr.user_id = u.id WHERE dr.id = ?", [$id]);
+                if ($reportOwner) {
+                    notify((int) $reportOwner['id'], 'Your daily report was reviewed', 'Your daily report was marked as ' . $status . '.', 'info', 'daily-reports.php?action=view&id=' . $id, [
+                        'related_type' => 'daily_reports',
+                        'related_id' => $id,
+                        'email' => [
+                            'to_email' => $reportOwner['email'],
+                            'to_name' => $reportOwner['name'],
+                            'subject' => 'Corporate Setup CRM - Daily Report Reviewed',
+                            'html' => buildStaffAccountEmailHtml('Your Daily Report Was Reviewed', [
+                                'Your daily report was marked as ' . ucfirst($status) . '.',
+                                $comments !== '' ? ('Reviewer comments: ' . $comments) : 'Open the CRM to review the status and any comments.'
+                            ], 'daily-reports.php?action=view&id=' . $id, 'View Daily Report'),
+                            'text' => 'Your daily report was marked as ' . $status . '.'
+                        ]
+                    ]);
+                }
                 echo json_encode([
                     'success' => true,
                     'message' => 'Report reviewed successfully',

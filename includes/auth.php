@@ -40,6 +40,12 @@ class Auth {
 
         $this->createSession($user);
         $this->recordLogin($user['id'], true);
+        $this->db->update('users', [
+            'last_login' => date('Y-m-d H:i:s'),
+            'login_attempts' => 0,
+            'locked_until' => null,
+            'updated_at' => date('Y-m-d H:i:s')
+        ], 'id = :id', ['id' => $user['id']]);
 
         return ['success' => true, 'user' => $this->getSafeUser($user)];
     }
@@ -49,9 +55,14 @@ class Auth {
             logActivity($_SESSION['user_id'], 'logout', 'User logged out');
         }
 
+        if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+            session_regenerate_id(true);
+        }
         session_unset();
         session_destroy();
-        setcookie('remember_token', '', time() - 3600, '/');
+        if (!headers_sent()) {
+            setcookie('remember_token', '', time() - 3600, '/');
+        }
 
         return true;
     }
@@ -88,7 +99,10 @@ class Auth {
             'email' => $_SESSION['user_email'],
             'role' => $_SESSION['user_role'],
             'department' => $_SESSION['user_department'],
-            'permissions' => $_SESSION['permissions'] ?? []
+            'permissions' => $_SESSION['permissions'] ?? [],
+            'avatar' => $_SESSION['user_avatar'] ?? null,
+            'status' => $_SESSION['user_status'] ?? 'active',
+            'must_change_password' => (int) ($_SESSION['must_change_password'] ?? 0)
         ];
     }
 
@@ -167,6 +181,9 @@ class Auth {
         $_SESSION['user_role'] = $user['role_name'];
         $_SESSION['user_department'] = $user['department_name'];
         $_SESSION['user_department_id'] = $user['department_id'];
+        $_SESSION['user_avatar'] = $user['avatar'] ?? null;
+        $_SESSION['user_status'] = $user['status'] ?? 'active';
+        $_SESSION['must_change_password'] = (int) ($user['must_change_password'] ?? 0);
         $_SESSION['permissions'] = $user['permissions'] ? json_decode($user['permissions'], true) : [];
         $_SESSION['login_time'] = time();
         $_SESSION['last_activity'] = time();
@@ -215,6 +232,18 @@ function requireLogin() {
     $auth = new Auth();
     if (!$auth->isLoggedIn()) {
         redirect('login.php');
+    }
+
+    try {
+        $db = Database::getInstance();
+        $activeUser = $db->fetch("SELECT id, status FROM users WHERE id = ?", [$_SESSION['user_id']]);
+        if (!$activeUser || $activeUser['status'] !== 'active') {
+            $auth->logout();
+            flashMessage('warning', 'Your session has ended. Please sign in again.');
+            redirect('login.php');
+        }
+    } catch (Exception $e) {
+        error_log('requireLogin user status check failed: ' . $e->getMessage());
     }
 }
 

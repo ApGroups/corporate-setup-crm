@@ -148,17 +148,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $notifyTargets = array_diff($notifyTargets, $previousAssignees);
                 }
                 foreach ($notifyTargets as $assigneeId) {
-                    $db->insert('notifications', [
-                        'user_id' => $assigneeId,
-                        'type' => 'task_assigned',
-                        'title' => 'New Task Assigned',
-                        'message' => 'You have been assigned a task: ' . $taskData['title'],
-                        'link' => 'tasks.php?action=view&id=' . $taskId,
-                        'related_type' => 'tasks',
-                        'related_id' => $taskId,
-                        'created_at' => date('Y-m-d H:i:s')
-                    ]);
+                    $assignee = $db->fetch("SELECT name, email FROM users WHERE id = ?", [$assigneeId]);
+                    notify(
+                        (int) $assigneeId,
+                        'New Task Assigned',
+                        'You have been assigned a task: ' . $taskData['title'],
+                        'info',
+                        'tasks.php?action=view&id=' . $taskId,
+                        [
+                            'related_type' => 'tasks',
+                            'related_id' => $taskId,
+                            'email' => $assignee ? [
+                                'to_email' => $assignee['email'],
+                                'to_name' => $assignee['name'],
+                                'subject' => 'Corporate Setup CRM - Task Assigned',
+                                'html' => buildStaffAccountEmailHtml(
+                                    'A Task Was Assigned To You',
+                                    [
+                                        'Task: ' . $taskData['title'],
+                                        'Priority: ' . ucfirst($taskData['priority']),
+                                        'Please open the CRM to review the full details.'
+                                    ],
+                                    'tasks.php?action=view&id=' . $taskId,
+                                    'View Task'
+                                ),
+                                'text' => 'A task was assigned to you: ' . $taskData['title']
+                            ] : null
+                        ]
+                    );
                 }
+
+                createOperationNotification(
+                    (int) $user['id'],
+                    $id > 0 ? 'Task updated' : 'Task created',
+                    $message,
+                    'success',
+                    'tasks.php?action=view&id=' . $taskId,
+                    ['related_type' => 'tasks', 'related_id' => $taskId]
+                );
 
                 echo json_encode([
                     'success' => true,
@@ -193,10 +220,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     exit;
                 }
 
-                $db->delete('tasks', 'id = :id', ['id' => $id]);
+                $db->beginTransaction();
+                $db->delete('task_assignees', 'task_id = :task_id', ['task_id' => $id]);
+                $db->delete('task_comments', 'task_id = :task_id', ['task_id' => $id]);
+                $db->delete('task_attachments', 'task_id = :task_id', ['task_id' => $id]);
+                $deletedRows = $db->delete('tasks', 'id = :id', ['id' => $id])->rowCount();
+                if ($deletedRows < 1) {
+                    $db->rollBack();
+                    echo json_encode(['success' => false, 'error' => 'Task not deleted (record may no longer exist)']);
+                    exit;
+                }
+                $db->commit();
+
                 logActivity($user['id'], 'delete', 'Deleted task: ' . $task['title'], 'tasks', $id);
-                echo json_encode(['success' => true, 'message' => 'Task deleted', 'reload' => true]);
+                createOperationNotification((int) $user['id'], 'Task deleted', 'Task deleted successfully.', 'success', 'tasks.php', [
+                    'related_type' => 'tasks',
+                    'related_id' => $id
+                ]);
+                echo json_encode(['success' => true, 'message' => 'Task deleted successfully', 'reload' => true]);
             } catch (Exception $e) {
+                if ($db->getConnection()->inTransaction()) {
+                    $db->rollBack();
+                }
                 error_log('Task delete error: ' . $e->getMessage());
                 $errorMessage = APP_ENV !== 'production'
                     ? ('Failed to delete task: ' . $e->getMessage())
@@ -219,6 +264,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'created_at' => date('Y-m-d H:i:s')
                 ]);
                 logActivity($user['id'], 'comment', 'Commented on task', 'tasks', $id);
+                createOperationNotification((int) $user['id'], 'Task comment added', 'Task comment added successfully.', 'success', 'tasks.php?action=view&id=' . $id, [
+                    'related_type' => 'tasks',
+                    'related_id' => $id
+                ]);
                 echo json_encode(['success' => true, 'message' => 'Comment added', 'reload' => true]);
             } catch (Exception $e) {
                 echo json_encode(['success' => false, 'error' => 'Failed to add comment']);
@@ -229,6 +278,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $progress = intval($_POST['progress']);
             try {
                 $db->update('tasks', ['progress' => $progress, 'updated_at' => date('Y-m-d H:i:s')], 'id = :id', ['id' => $id]);
+                createOperationNotification((int) $user['id'], 'Task progress updated', 'Task progress updated successfully.', 'success', 'tasks.php?action=view&id=' . $id, [
+                    'related_type' => 'tasks',
+                    'related_id' => $id
+                ]);
                 echo json_encode(['success' => true, 'progress' => $progress]);
             } catch (Exception $e) {
                 echo json_encode(['success' => false, 'error' => 'Failed to update progress']);

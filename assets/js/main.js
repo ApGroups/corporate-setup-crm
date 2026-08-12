@@ -40,7 +40,9 @@ document.addEventListener('DOMContentLoaded', function() {
 // Dropdown Toggle
 function toggleDropdown() {
     const dropdown = document.getElementById('userDropdown');
-    dropdown.classList.toggle('active');
+    if (dropdown) {
+        dropdown.classList.toggle('active');
+    }
 }
 
 // Close dropdown when clicking outside
@@ -122,7 +124,13 @@ document.addEventListener('click', function(e) {
 
     const deleteTaskBtn = e.target.closest('[data-delete-task-id]');
     if (deleteTaskBtn) {
-        deleteTask(deleteTaskBtn.getAttribute('data-delete-task-id'));
+        deleteTask(deleteTaskBtn.getAttribute('data-delete-task-id'), deleteTaskBtn);
+        return;
+    }
+
+    const deleteRegistrationBtn = e.target.closest('[data-delete-registration-id]');
+    if (deleteRegistrationBtn) {
+        deleteRegistration(deleteRegistrationBtn.getAttribute('data-delete-registration-id'), deleteRegistrationBtn);
         return;
     }
 
@@ -637,6 +645,9 @@ function isAjaxPostForm(form) {
  * @param {number} duration - Duration in milliseconds (default: 3000)
  */
 function showToast(message, type = 'info', duration = 3000) {
+    if (type === 'danger') {
+        type = 'error';
+    }
     const toastContainer = document.getElementById('toastContainer');
     
     // Create container if it doesn't exist
@@ -951,8 +962,16 @@ function deleteContact(id) {
  * Delete task by ID
  * @param {string} id - Task ID
  */
-function deleteTask(id) {
-    deleteRecord('delete', id, 'task');
+function deleteTask(id, sourceElement = null) {
+    deleteRecord('delete', id, 'task', sourceElement);
+}
+
+/**
+ * Delete registration by ID
+ * @param {string} id
+ */
+function deleteRegistration(id, sourceElement = null) {
+    deleteRecord('delete', id, 'registration', sourceElement);
 }
 
 /**
@@ -968,8 +987,57 @@ function deleteMeeting(id, sourceElement = null) {
  * @param {string} id - Staff ID
  */
 function deleteStaff(id, sourceElement = null) {
-    deleteRecord('delete', id, 'staff account', sourceElement);
+    const row = sourceElement ? sourceElement.closest('tr') : null;
+    const nameTarget = row ? row.querySelector('strong') : null;
+    const staffName = nameTarget ? nameTarget.textContent.trim() : 'this staff member';
+    openDeleteStaffModal(id, staffName, sourceElement);
 }
+
+let pendingStaffDelete = null;
+
+function openDeleteStaffModal(id, staffName, sourceElement = null) {
+    const modal = document.getElementById('deleteStaffModal');
+    if (!modal) {
+        deleteRecord('delete', id, 'staff account', sourceElement);
+        return;
+    }
+
+    pendingStaffDelete = { id, sourceElement };
+    const nameNode = document.getElementById('deleteStaffName');
+    const formIdNode = document.getElementById('deleteStaffId');
+    const submitBtn = document.getElementById('confirmDeleteStaffBtn');
+
+    if (nameNode) {
+        nameNode.textContent = staffName;
+    }
+    if (formIdNode) {
+        formIdNode.value = id;
+    }
+    if (submitBtn) {
+        submitBtn.disabled = false;
+    }
+    openModal('deleteStaffModal');
+}
+
+document.addEventListener('submit', function(e) {
+    const form = e.target;
+    if (form && form.id === 'deleteStaffForm') {
+        e.preventDefault();
+        if (!pendingStaffDelete) {
+            closeModal('deleteStaffModal');
+            return;
+        }
+
+        const submitBtn = document.getElementById('confirmDeleteStaffBtn');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+        }
+
+        closeModal('deleteStaffModal');
+        deleteRecord('delete', pendingStaffDelete.id, 'staff account', pendingStaffDelete.sourceElement);
+        pendingStaffDelete = null;
+    }
+});
 
 // Initialize form handlers on page load
 document.addEventListener('DOMContentLoaded', initFormHandlers);

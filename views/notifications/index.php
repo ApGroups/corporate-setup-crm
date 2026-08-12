@@ -33,6 +33,9 @@
                                 <small class="text-muted"><?= timeAgo($n['created_at']) ?></small>
                             </div>
                             <p class="text-muted mt-1"><?= sanitize($n['message']) ?></p>
+                            <?php if (isset($n['sent_email']) && (int)$n['sent_email'] === 1): ?>
+                                <small class="text-muted" style="display:block; margin-top: 0.5rem;">Email delivered to mailbox provider.</small>
+                            <?php endif; ?>
                             <?php if ($n['link']): ?>
                                 <a href="<?= sanitize($n['link']) ?>" class="btn btn-sm btn-outline mt-2">View Details</a>
                             <?php endif; ?>

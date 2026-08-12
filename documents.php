@@ -90,6 +90,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $newId = $db->insert('documents', $docData);
                 logActivity($user['id'], 'upload', 'Uploaded document: ' . $docData['document_name'], 'documents', $newId);
+                createOperationNotification((int) $user['id'], 'Document uploaded', 'Document uploaded successfully.', 'success', 'documents.php', [
+                    'related_type' => 'documents',
+                    'related_id' => $newId
+                ]);
                 echo json_encode(['success' => true, 'message' => 'Document uploaded successfully', 'id' => $newId]);
             } catch (Exception $e) {
                 echo json_encode(['success' => false, 'error' => 'Failed to upload document']);
@@ -107,6 +111,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                         $db->update('documents', ['status' => 'deleted'], 'id = :id', ['id' => $id]);
                         logActivity($user['id'], 'delete', 'Deleted document: ' . $doc['document_name'], 'documents', $id);
+                        createOperationNotification((int) $user['id'], 'Document deleted', 'Document deleted successfully.', 'success', 'documents.php', [
+                            'related_type' => 'documents',
+                            'related_id' => $id
+                        ]);
                         echo json_encode(['success' => true, 'message' => 'Document deleted successfully']);
                     } else {
                         echo json_encode(['success' => false, 'error' => 'Document not found']);

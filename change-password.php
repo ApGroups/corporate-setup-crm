@@ -56,6 +56,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($result['success']) {
                 $db->update('users', ['must_change_password' => 0], 'id = :id', ['id' => $user['id']]);
                 logActivity($user['id'], 'password_change', 'Changed password');
+                createOperationNotification((int) $user['id'], 'Password changed', 'Password changed successfully.', 'success', 'profile.php', [
+                    'related_type' => 'users',
+                    'related_id' => (int) $user['id']
+                ]);
+                notify((int) $user['id'], 'Your password was changed', 'Your Corporate Setup CRM password was changed successfully.', 'info', 'profile.php', [
+                    'related_type' => 'users',
+                    'related_id' => (int) $user['id'],
+                    'email' => [
+                        'to_email' => $user['email'],
+                        'to_name' => $user['name'],
+                        'subject' => 'Corporate Setup CRM - Password Changed',
+                        'html' => buildStaffAccountEmailHtml('Your CRM Password Was Changed', [
+                            'Your Corporate Setup CRM password was changed successfully.',
+                            'If you did not perform this action, use the password reset link immediately and contact an administrator.'
+                        ], 'profile.php', 'Open Profile'),
+                        'text' => 'Your Corporate Setup CRM password was changed successfully.'
+                    ]
+                ]);
                 $success = 'Password changed successfully.';
             } else {
                 $error = $result['error'];

@@ -1,6 +1,7 @@
 <?php defined('APP_NAME') or die('Direct access not allowed'); ?>
 
 <?php $canManageUsers = checkPermission('manage_users'); ?>
+<?php $canDeleteUsers = isset($auth) ? $auth->hasRole('Administrator') : checkPermission('manage_users'); ?>
 
 <?php if ($action === 'add' || ($action === 'edit' && $staffMember)): ?>
     <div class="page-header">
@@ -110,7 +111,9 @@
         <div class="btn-group">
             <?php if ($canManageUsers): ?>
                 <a href="staff.php?action=edit&id=<?= intval($staffMember['id']) ?>" class="btn btn-outline"><i class="fas fa-edit"></i> Edit</a>
-                <button type="button" data-delete-staff-id="<?= intval($staffMember['id']) ?>" class="btn btn-danger"><i class="fas fa-user-slash"></i> Deactivate</button>
+                <?php if ($canDeleteUsers && intval($staffMember['id']) !== intval($user['id'])): ?>
+                    <button type="button" data-delete-staff-id="<?= intval($staffMember['id']) ?>" class="btn btn-danger"><i class="fas fa-user-slash"></i> Delete</button>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
     </div>
@@ -189,7 +192,9 @@
                                         <a href="staff.php?action=view&id=<?= $s['id'] ?>" class="btn btn-sm btn-outline"><i class="fas fa-eye"></i></a>
                                         <?php if ($canManageUsers): ?>
                                             <a href="staff.php?action=edit&id=<?= $s['id'] ?>" class="btn btn-sm btn-outline"><i class="fas fa-edit"></i></a>
-                                            <button type="button" data-delete-staff-id="<?= $s['id'] ?>" class="btn btn-sm btn-danger" title="Deactivate"><i class="fas fa-user-slash"></i></button>
+                                            <?php if ($canDeleteUsers && intval($s['id']) !== intval($user['id'])): ?>
+                                                <button type="button" data-delete-staff-id="<?= $s['id'] ?>" class="btn btn-sm btn-danger" title="Delete staff member"><i class="fas fa-user-slash"></i></button>
+                                            <?php endif; ?>
                                         <?php endif; ?>
                                     </div>
                                 </td>
@@ -310,3 +315,25 @@
 <?php endif; ?>
 
 <?php endif; ?>
+
+<div class="modal-overlay" id="deleteStaffModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Delete Staff Member?</h3>
+            <button class="modal-close" type="button" data-close-modal="deleteStaffModal"><i class="fas fa-times"></i></button>
+        </div>
+        <form id="deleteStaffForm" method="POST" action="staff.php">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="id" id="deleteStaffId" value="">
+            <div class="modal-body">
+                <p>You are about to remove <strong id="deleteStaffName">this staff member</strong> from the CRM.</p>
+                <p class="text-muted">This action deactivates access while preserving historical records and related business data.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" data-close-modal="deleteStaffModal">Cancel</button>
+                <button type="submit" class="btn btn-danger" id="confirmDeleteStaffBtn">Delete Staff</button>
+            </div>
+        </form>
+    </div>
+</div>

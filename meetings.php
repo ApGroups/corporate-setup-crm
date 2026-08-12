@@ -85,11 +85,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($id > 0) {
                     $db->update('meetings', $meetingData, 'id = :id', ['id' => $id]);
                     logActivity($user['id'], 'update', 'Updated meeting: ' . $meetingData['title'], 'meetings', $id);
+                    createOperationNotification((int) $user['id'], 'Meeting updated', 'Meeting updated successfully.', 'success', 'meetings.php?action=view&id=' . $id, [
+                        'related_type' => 'meetings',
+                        'related_id' => $id
+                    ]);
                     echo json_encode(['success' => true, 'message' => 'Meeting updated successfully', 'redirect' => 'meetings.php?action=view&id=' . $id]);
                 } else {
                     $meetingData['created_at'] = date('Y-m-d H:i:s');
                     $newId = $db->insert('meetings', $meetingData);
                     logActivity($user['id'], 'create', 'Created meeting: ' . $meetingData['title'], 'meetings', $newId);
+                    createOperationNotification((int) $user['id'], 'Meeting created', 'Meeting created successfully.', 'success', 'meetings.php?action=view&id=' . $newId, [
+                        'related_type' => 'meetings',
+                        'related_id' => $newId
+                    ]);
                     echo json_encode(['success' => true, 'message' => 'Meeting created successfully', 'redirect' => 'meetings.php?action=view&id=' . $newId]);
                 }
             } catch (Exception $e) {
@@ -112,6 +120,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $db->delete('meetings', 'id = :id', ['id' => $id]);
                 logActivity($user['id'], 'delete', 'Deleted meeting: ' . $meeting['title'], 'meetings', $id);
+                createOperationNotification((int) $user['id'], 'Meeting deleted', 'Meeting deleted successfully.', 'success', 'meetings.php', [
+                    'related_type' => 'meetings',
+                    'related_id' => $id
+                ]);
                 echo json_encode(['success' => true, 'message' => 'Meeting deleted successfully', 'reload' => true]);
             } catch (Exception $e) {
                 echo json_encode(['success' => false, 'error' => 'Failed to delete meeting: ' . $e->getMessage()]);

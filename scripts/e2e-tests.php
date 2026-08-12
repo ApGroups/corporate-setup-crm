@@ -17,6 +17,7 @@ require_once __DIR__ . '/../helpers/formatters.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/monthly_reports.php';
+require_once __DIR__ . '/../includes/MailService.php';
 
 $results = [];
 $pass = 0;
@@ -84,6 +85,29 @@ assert_true('Permissions deny manage_users for Marketing session', $denied);
 $_SESSION['user_role'] = 'Administrator';
 $_SESSION['permissions'] = ['*'];
 
+// --- Notification + email logging infrastructure ---
+$tables = array_map(function ($r) { return array_values($r)[0]; }, $db->fetchAll('SHOW TABLES'));
+assert_true('Database email_logs', in_array('email_logs', $tables, true));
+
+$emailLogCountBefore = (int)$db->query("SELECT COUNT(*) FROM email_logs")->fetchColumn();
+$uniqueToken = 'e2e-' . microtime(true);
+$notifyResult = notify(4, 'E2E notification', 'Testing notification + email handoff. ' . $uniqueToken, 'success', 'profile.php', [
+    'related_type' => 'users',
+    'related_id' => 4,
+    'email' => [
+        'to_email' => 'john.okonkwo@corporatesetup.com',
+        'to_name' => 'John Okonkwo',
+        'subject' => 'E2E Notification',
+        'html' => '<p>Test email body</p>',
+        'text' => 'Test email body'
+    ]
+]);
+assert_true('Notification helper inserts row', !empty($notifyResult['success']) && !empty($notifyResult['id']));
+$emailLogCountAfter = (int)$db->query("SELECT COUNT(*) FROM email_logs")->fetchColumn();
+assert_true('Email handoff logged', $emailLogCountAfter === $emailLogCountBefore + 1);
+$emailLog = $db->fetch("SELECT * FROM email_logs ORDER BY id DESC LIMIT 1");
+assert_true('Email failure logged safely', in_array($emailLog['status'], ['sent', 'failed', 'not_configured'], true));
+
 // --- Tasks multi-assignee ---
 $taskId = (int)$db->insert('tasks', [
     'title' => 'E2E Multi Assignee Task',
@@ -117,14 +141,30 @@ assert_true('Tasks delete cleans assignees', $orphans === 0);
 
 // --- Daily reports ---
 $today = date('Y-m-d');
+$year = (int) date('Y');
+$month = (int) date('n');
+$dateA = sprintf('%04d-%02d-03', $year, $month);
+$dateB = sprintf('%04d-%02d-12', $year, $month);
 $db->delete('daily_reports', 'user_id = :uid AND report_date = :d', ['uid' => 4, 'd' => $today]);
-$reportId = (int)$db->insert('daily_reports', [
+$db->delete('daily_reports', 'user_id = :uid AND report_date = :d', ['uid' => 4, 'd' => $dateA]);
+$db->delete('daily_reports', 'user_id = :uid AND report_date = :d', ['uid' => 4, 'd' => $dateB]);
+$reportId = (int) $db->insert('daily_reports', [
     'user_id' => 4,
-    'report_date' => $today,
+    'report_date' => $dateA,
     'activities' => 'E2E daily activities',
     'projects_worked' => 'Project Alpha',
     'clients_contacted' => 'Client X',
     'issues_encountered' => 'None',
+    'status' => 'submitted',
+    'created_at' => date('Y-m-d H:i:s'),
+]);
+$db->insert('daily_reports', [
+    'user_id' => 4,
+    'report_date' => $dateB,
+    'activities' => 'Second week project work',
+    'projects_worked' => 'Project Beta',
+    'clients_contacted' => 'Client Y',
+    'issues_encountered' => 'Delay',
     'status' => 'submitted',
     'created_at' => date('Y-m-d H:i:s'),
 ]);
@@ -135,7 +175,7 @@ $dupBlocked = false;
 try {
     $db->insert('daily_reports', [
         'user_id' => 4,
-        'report_date' => $today,
+        'report_date' => $dateA,
         'activities' => 'Duplicate',
         'status' => 'draft',
         'created_at' => date('Y-m-d H:i:s'),
@@ -146,13 +186,22 @@ try {
 assert_true('Daily Reports duplicate prevention', $dupBlocked);
 
 // --- Monthly reports ---
-$year = (int)date('Y');
-$month = (int)date('n');
 $gen1 = generateMonthlyReportForUser($db, 4, $year, $month, 1);
 $gen2 = generateMonthlyReportForUser($db, 4, $year, $month, 1);
 $mr = $db->fetch("SELECT * FROM monthly_reports WHERE id = ?", [$gen1['id']]);
-assert_true('Monthly Reports generate/save', $mr && (int)$mr['daily_reports_count'] >= 1, 'count=' . ($mr['daily_reports_count'] ?? 0));
+assert_true('Monthly Reports generate/save', $mr && (int) $mr['daily_reports_count'] >= 2, 'count=' . ($mr['daily_reports_count'] ?? 0));
 assert_true('Monthly Reports duplicate upsert', $gen1['id'] === $gen2['id'] && $gen2['created'] === false);
+
+$weekly = json_decode((string) ($mr['weekly_breakdown'] ?? ''), true);
+$projects = json_decode((string) ($mr['project_breakdown'] ?? ''), true);
+assert_true('Monthly weekly breakdown stored', is_array($weekly) && count($weekly) >= 1);
+$projectNames = is_array($projects) ? array_map(static function ($p) {
+    return $p['name'] ?? '';
+}, $projects) : [];
+assert_true('Monthly project breakdown includes Project Alpha', in_array('Project Alpha', $projectNames, true));
+assert_true('Monthly project breakdown includes Project Beta', in_array('Project Beta', $projectNames, true));
+$hasWeekKeys = is_array($weekly) && isset($weekly[0]['week'], $weekly[0]['start'], $weekly[0]['end']);
+assert_true('Monthly weekly breakdown has week keys', $hasWeekKeys);
 
 // --- Recent activity ---
 logActivity(1, 'test', 'E2E activity entry', 'users', 1);
@@ -162,9 +211,11 @@ $dashActs = $db->fetchAll("SELECT al.*, u.name as user_name FROM activity_logs a
 assert_true('Recent Activity retrieve', count($dashActs) > 0);
 
 // --- Database schema ---
-$tables = array_map(function ($r) { return array_values($r)[0]; }, $db->fetchAll('SHOW TABLES'));
 assert_true('Database task_assignees', in_array('task_assignees', $tables, true));
 assert_true('Database monthly_reports', in_array('monthly_reports', $tables, true));
+$monthlyColumns = array_column($db->fetchAll('SHOW COLUMNS FROM monthly_reports'), 'Field');
+assert_true('Database weekly_breakdown column', in_array('weekly_breakdown', $monthlyColumns, true));
+assert_true('Database project_breakdown column', in_array('project_breakdown', $monthlyColumns, true));
 
 // --- Tomorrow plan removed from app code ---
 $dailyPhp = file_get_contents(__DIR__ . '/../daily-reports.php');
@@ -180,6 +231,82 @@ assert_true('notify() uses link column', strpos($fn, "'link' => \$actionUrl") !=
 assert_true('Activity log page exists', is_file(__DIR__ . '/../activity-log.php'));
 assert_true('Backup page exists', is_file(__DIR__ . '/../backup.php'));
 assert_true('Monthly reports page exists', is_file(__DIR__ . '/../monthly-reports.php'));
+
+// --- Staff delete authorization ---
+$php = 'C:\\xampp\\php\\php.exe';
+$adminDeleteResponse = shell_exec('"' . $php . '" "' . __DIR__ . '\\staff-delete-endpoint-test.php" Administrator');
+$itDeleteResponse = shell_exec('"' . $php . '" "' . __DIR__ . '\\staff-delete-endpoint-test.php" IT "[\"view_users\",\"manage_users\"]"');
+assert_true('Admin staff delete endpoint allowed', is_string($adminDeleteResponse) && strpos($adminDeleteResponse, '"success":true') !== false);
+assert_true('Non-admin staff delete endpoint blocked', is_string($itDeleteResponse) && strpos($itDeleteResponse, 'do not have permission to delete staff members') !== false);
+
+// Restore test user deactivation side effect from admin endpoint check
+$db->update('users', ['status' => 'active', 'updated_at' => date('Y-m-d H:i:s')], 'id = :id', ['id' => 4]);
+
+// --- Task delete with related rows ---
+$deleteTaskId = (int) $db->insert('tasks', [
+    'title' => 'E2E Delete Task',
+    'description' => 'Delete me',
+    'task_type' => 'general',
+    'assigned_to' => 1,
+    'assigned_by' => 1,
+    'priority' => 'low',
+    'status' => 'pending',
+    'progress' => 0,
+    'frequency' => 'once',
+    'created_at' => date('Y-m-d H:i:s'),
+    'updated_at' => date('Y-m-d H:i:s'),
+]);
+$db->insert('task_assignees', ['task_id' => $deleteTaskId, 'user_id' => 1, 'created_at' => date('Y-m-d H:i:s')]);
+$db->insert('task_comments', [
+    'task_id' => $deleteTaskId,
+    'user_id' => 1,
+    'comment' => 'E2E comment',
+    'created_at' => date('Y-m-d H:i:s'),
+]);
+$deniedTaskDelete = shell_exec('"' . $php . '" "' . __DIR__ . '\\delete-endpoint-test.php" tasks Management ' . $deleteTaskId);
+assert_true('Non-manager task delete blocked', is_string($deniedTaskDelete) && strpos($deniedTaskDelete, 'not authorized to delete tasks') !== false);
+$allowedTaskDelete = shell_exec('"' . $php . '" "' . __DIR__ . '\\delete-endpoint-test.php" tasks Administrator ' . $deleteTaskId);
+assert_true('Admin task delete endpoint allowed', is_string($allowedTaskDelete) && strpos($allowedTaskDelete, '"success":true') !== false);
+$taskGone = $db->fetch("SELECT id FROM tasks WHERE id = ?", [$deleteTaskId]);
+$commentGone = (int) $db->query("SELECT COUNT(*) FROM task_comments WHERE task_id = ?", [$deleteTaskId])->fetchColumn();
+$assigneeGone = (int) $db->query("SELECT COUNT(*) FROM task_assignees WHERE task_id = ?", [$deleteTaskId])->fetchColumn();
+assert_true('Task delete removes related rows', !$taskGone && $commentGone === 0 && $assigneeGone === 0);
+
+// --- Admin registration delete ---
+$company = $db->fetch("SELECT id FROM companies ORDER BY id LIMIT 1");
+$regType = $db->fetch("SELECT id FROM registration_types ORDER BY id LIMIT 1");
+assert_true('Registration fixtures exist', !empty($company) && !empty($regType));
+$regId = 0;
+if ($company && $regType) {
+    $regId = (int) $db->insert('registrations', [
+        'company_id' => $company['id'],
+        'registration_type_id' => $regType['id'],
+        'status' => 'pending',
+        'priority' => 'medium',
+        'created_by' => 1,
+        'created_at' => date('Y-m-d H:i:s'),
+        'updated_at' => date('Y-m-d H:i:s'),
+    ]);
+}
+$deniedRegDelete = shell_exec('"' . $php . '" "' . __DIR__ . '\\delete-endpoint-test.php" registrations Management ' . $regId);
+assert_true('Non-admin registration delete blocked', is_string($deniedRegDelete) && strpos($deniedRegDelete, 'do not have permission to delete registrations') !== false);
+$stillThere = $db->fetch("SELECT id FROM registrations WHERE id = ?", [$regId]);
+assert_true('Blocked registration delete leaves record', !empty($stillThere));
+$allowedRegDelete = shell_exec('"' . $php . '" "' . __DIR__ . '\\delete-endpoint-test.php" registrations Administrator ' . $regId);
+assert_true('Admin registration delete endpoint allowed', is_string($allowedRegDelete) && strpos($allowedRegDelete, '"success":true') !== false);
+$regGone = $db->fetch("SELECT id FROM registrations WHERE id = ?", [$regId]);
+assert_true('Admin registration delete removes record', empty($regGone));
+
+// --- Logout / session hardening ---
+$authLogout = new Auth();
+$authLogout->logout();
+assert_true('Logout clears local auth state', !$authLogout->isLoggedIn());
+$configPhp = file_get_contents(__DIR__ . '/../config/config.php');
+$logoutPhp = file_get_contents(__DIR__ . '/../logout.php');
+$loginPhp = file_get_contents(__DIR__ . '/../login.php');
+assert_true('Protected pages send no-store cache headers', strpos($configPhp, 'Cache-Control: no-store') !== false);
+assert_true('Logout sets success flash', strpos($logoutPhp, "flashMessage('success'") !== false);
+assert_true('Remember me removed from login UI', strpos($loginPhp, 'Remember me') === false);
 
 echo PHP_EOL . "Summary: $pass passed, $fail failed" . PHP_EOL;
 exit($fail > 0 ? 1 : 0);

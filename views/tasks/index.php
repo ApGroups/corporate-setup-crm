@@ -138,8 +138,10 @@
             <p class="page-subtitle"><a href="tasks.php">Tasks</a> &rsaquo; Details</p>
         </div>
         <div class="btn-group">
-            <a href="tasks.php?action=edit&id=<?= $task['id'] ?>" class="btn btn-outline"><i class="fas fa-edit"></i> Edit</a>
-            <button type="button" data-delete-task-id="<?= $task['id'] ?>" class="btn btn-danger"><i class="fas fa-trash"></i> Delete</button>
+            <?php if (!empty($canManageTasks)): ?>
+                <a href="tasks.php?action=edit&id=<?= $task['id'] ?>" class="btn btn-outline"><i class="fas fa-edit"></i> Edit</a>
+                <button type="button" data-delete-task-id="<?= $task['id'] ?>" class="btn btn-danger"><i class="fas fa-trash"></i> Delete</button>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -348,7 +350,10 @@
                                     <td>
                                         <div class="table-actions">
                                             <a href="tasks.php?action=view&id=<?= $t['id'] ?>" class="btn btn-sm btn-outline"><i class="fas fa-eye"></i></a>
-                                            <a href="tasks.php?action=edit&id=<?= $t['id'] ?>" class="btn btn-sm btn-outline"><i class="fas fa-edit"></i></a>
+                                            <?php if (!empty($canManageTasks)): ?>
+                                                <a href="tasks.php?action=edit&id=<?= $t['id'] ?>" class="btn btn-sm btn-outline"><i class="fas fa-edit"></i></a>
+                                                <button type="button" data-delete-task-id="<?= $t['id'] ?>" class="btn btn-sm btn-danger" title="Delete task"><i class="fas fa-trash"></i></button>
+                                            <?php endif; ?>
                                         </div>
                                     </td>
                                 </tr>

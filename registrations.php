@@ -28,6 +28,9 @@ $activeNav = 'registrations';
 
 $db = Database::getInstance();
 $user = getCurrentUser();
+$auth = new Auth();
+$isAdmin = $auth->hasRole('Administrator');
+$canManageRegistrations = checkPermission('manage_registrations');
 
 $action = $_POST['action'] ?? $_GET['action'] ?? 'list';
 $id = intval($_POST['id'] ?? $_GET['id'] ?? 0);
@@ -68,13 +71,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($id > 0) {
                     $db->update('registrations', $regData, 'id = :id', ['id' => $id]);
                     logActivity($user['id'], 'update', 'Updated registration', 'registrations', $id);
+                    createOperationNotification((int) $user['id'], 'Registration updated', 'Registration updated successfully.', 'success', 'registrations.php?action=view&id=' . $id, [
+                        'related_type' => 'registrations',
+                        'related_id' => $id
+                    ]);
                     echo json_encode(['success' => true, 'message' => 'Registration updated successfully']);
                 } else {
                     $regData['created_by'] = $user['id'];
                     $regData['created_at'] = date('Y-m-d H:i:s');
                     $newId = $db->insert('registrations', $regData);
                     logActivity($user['id'], 'create', 'Created registration', 'registrations', $newId);
+                    createOperationNotification((int) $user['id'], 'Registration created', 'Registration created successfully.', 'success', 'registrations.php?action=view&id=' . $newId, [
+                        'related_type' => 'registrations',
+                        'related_id' => $newId
+                    ]);
                     echo json_encode(['success' => true, 'message' => 'Registration created successfully', 'id' => $newId]);
+                }
+
+                if (!empty($regData['assigned_staff_id']) && (int) $regData['assigned_staff_id'] !== (int) $user['id']) {
+                    $assignedStaff = $db->fetch("SELECT name, email FROM users WHERE id = ?", [$regData['assigned_staff_id']]);
+                    if ($assignedStaff) {
+                        notify((int) $regData['assigned_staff_id'], 'Registration assigned', 'A registration assigned to you was updated.', 'info', 'registrations.php?action=view&id=' . ($id > 0 ? $id : $newId), [
+                            'related_type' => 'registrations',
+                            'related_id' => $id > 0 ? $id : $newId,
+                            'email' => [
+                                'to_email' => $assignedStaff['email'],
+                                'to_name' => $assignedStaff['name'],
+                                'subject' => 'Corporate Setup CRM - Registration Assigned',
+                                'html' => buildStaffAccountEmailHtml('A Registration Was Assigned To You', [
+                                    'A registration has been assigned or updated for your review.',
+                                    'Open the CRM to see the latest registration details.'
+                                ], 'registrations.php?action=view&id=' . ($id > 0 ? $id : $newId), 'View Registration'),
+                                'text' => 'A registration has been assigned or updated for your review.'
+                            ]
+                        ]);
+                    }
                 }
             } catch (Exception $e) {
                 echo json_encode(['success' => false, 'error' => 'Failed to save registration: ' . $e->getMessage()]);
@@ -82,19 +113,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
 
         case 'delete':
-            if ($id > 0) {
-                try {
-                    $reg = $db->fetch("SELECT * FROM registrations WHERE id = ?", [$id]);
-                    if ($reg) {
-                        $db->delete('registrations', 'id = :id', ['id' => $id]);
-                        logActivity($user['id'], 'delete', 'Deleted registration', 'registrations', $id);
-                        echo json_encode(['success' => true, 'message' => 'Registration deleted successfully']);
-                    } else {
-                        echo json_encode(['success' => false, 'error' => 'Registration not found']);
-                    }
-                } catch (Exception $e) {
-                    echo json_encode(['success' => false, 'error' => 'Failed to delete registration']);
+            if (!$auth->hasRole('Administrator')) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'error' => 'You do not have permission to delete registrations.']);
+                exit;
+            }
+
+            if ($id <= 0) {
+                echo json_encode(['success' => false, 'error' => 'Invalid registration ID']);
+                exit;
+            }
+
+            try {
+                $reg = $db->fetch("SELECT r.*, c.company_name, rt.name as registration_type
+                    FROM registrations r
+                    JOIN companies c ON r.company_id = c.id
+                    JOIN registration_types rt ON r.registration_type_id = rt.id
+                    WHERE r.id = ?", [$id]);
+                if (!$reg) {
+                    echo json_encode(['success' => false, 'error' => 'Registration not found']);
+                    exit;
                 }
+
+                $db->beginTransaction();
+                $db->query("UPDATE documents SET registration_id = NULL WHERE registration_id = ?", [$id]);
+                $db->query("UPDATE tasks SET related_registration_id = NULL WHERE related_registration_id = ?", [$id]);
+                $deletedRows = $db->delete('registrations', 'id = :id', ['id' => $id])->rowCount();
+                if ($deletedRows < 1) {
+                    $db->rollBack();
+                    echo json_encode(['success' => false, 'error' => 'Registration not deleted (record may no longer exist)']);
+                    exit;
+                }
+                $db->commit();
+
+                logActivity($user['id'], 'delete', 'Deleted registration: ' . $reg['registration_type'] . ' for ' . $reg['company_name'], 'registrations', $id);
+                createOperationNotification((int) $user['id'], 'Registration deleted', 'Registration deleted successfully.', 'success', 'registrations.php', [
+                    'related_type' => 'registrations',
+                    'related_id' => $id
+                ]);
+                echo json_encode(['success' => true, 'message' => 'Registration deleted successfully', 'reload' => true]);
+            } catch (Exception $e) {
+                if ($db->getConnection()->inTransaction()) {
+                    $db->rollBack();
+                }
+                error_log('Registration delete error: ' . $e->getMessage());
+                echo json_encode(['success' => false, 'error' => 'Failed to delete registration']);
             }
             exit;
 
@@ -122,6 +185,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'created_at' => date('Y-m-d H:i:s')
                     ]);
 
+                    createOperationNotification((int) $user['id'], 'Registration status updated', 'Registration status updated successfully.', 'success', 'registrations.php?action=view&id=' . $id, [
+                        'related_type' => 'registrations',
+                        'related_id' => $id
+                    ]);
                     echo json_encode(['success' => true, 'message' => 'Status updated']);
                 } catch (Exception $e) {
                     echo json_encode(['success' => false, 'error' => 'Failed to update status']);

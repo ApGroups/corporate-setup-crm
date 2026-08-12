@@ -570,6 +570,23 @@ CREATE TABLE IF NOT EXISTS `notification_templates` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
+-- Table: email_logs
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `email_logs` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `notification_id` INT NULL,
+    `recipient_email` VARCHAR(190) NOT NULL,
+    `subject` VARCHAR(255) NOT NULL,
+    `status` ENUM('sent', 'failed', 'not_configured') DEFAULT 'failed',
+    `error_message` TEXT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`notification_id`) REFERENCES `notifications`(`id`) ON DELETE SET NULL,
+    INDEX `idx_email_logs_recipient` (`recipient_email`),
+    INDEX `idx_email_logs_status` (`status`),
+    INDEX `idx_email_logs_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
 -- Table: activity_logs
 -- --------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `activity_logs` (
@@ -735,6 +752,8 @@ CREATE TABLE IF NOT EXISTS `monthly_reports` (
     `projects_summary` TEXT,
     `clients_summary` TEXT,
     `issues_summary` TEXT,
+    `weekly_breakdown` JSON NULL,
+    `project_breakdown` JSON NULL,
     `tasks_completed_count` INT NOT NULL DEFAULT 0,
     `tasks_outstanding_count` INT NOT NULL DEFAULT 0,
     `generated_at` DATETIME NOT NULL,

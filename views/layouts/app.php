@@ -9,6 +9,7 @@ if (!isset($activeNav)) $activeNav = 'dashboard';
 
 $user = getCurrentUser();
 $db = Database::getInstance();
+$flash = getFlashMessage();
 
 // Get notification count
 $notificationCount = $db->query(
@@ -211,7 +212,7 @@ $pendingTasks = $db->query(
 
                     <div class="dropdown">
                         <div class="user-menu" id="userMenuTrigger">
-                            <?= generateAvatar($user['name'], 36) ?>
+                            <?= generateAvatar($user['name'], 36, $user['avatar'] ?? null) ?>
                             <div class="user-info">
                                 <div class="user-name"><?= sanitize($user['name']) ?></div>
                                 <div class="user-role"><?= sanitize($user['role']) ?></div>
@@ -219,6 +220,12 @@ $pendingTasks = $db->query(
                             <i class="fas fa-chevron-down" style="color: var(--dark-grey);"></i>
                         </div>
                         <div class="dropdown-menu" id="userDropdown">
+                            <div class="dropdown-item" style="cursor: default; flex-direction: column; align-items: flex-start;">
+                                <strong><?= sanitize($user['name']) ?></strong>
+                                <small class="text-muted"><?= sanitize($user['email']) ?></small>
+                                <small class="text-muted"><?= sanitize($user['role']) ?></small>
+                            </div>
+                            <div class="dropdown-divider"></div>
                             <a href="profile.php" class="dropdown-item">
                                 <i class="fas fa-user"></i> My Profile
                             </a>
@@ -236,6 +243,12 @@ $pendingTasks = $db->query(
 
             <!-- Page Content -->
             <div class="page-content">
+                <?php if ($flash): ?>
+                    <div class="alert alert-<?= sanitize($flash['type']) ?> mb-4">
+                        <i class="fas fa-info-circle"></i>
+                        <div class="alert-content"><?= sanitize($flash['message']) ?></div>
+                    </div>
+                <?php endif; ?>
                 <?= $content ?? '' ?>
             </div>
         </main>

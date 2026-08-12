@@ -111,12 +111,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($id > 0) {
                     $db->update('companies', $companyData, 'id = :id', ['id' => $id]);
                     logActivity($user['id'], 'update', 'Updated company: ' . $companyData['company_name'], 'companies', $id);
+                    createOperationNotification((int) $user['id'], 'Company updated', 'Company updated successfully.', 'success', 'companies.php?action=view&id=' . $id, [
+                        'related_type' => 'companies',
+                        'related_id' => $id
+                    ]);
+
+                    if (!empty($companyData['assigned_staff_id']) && (int) $companyData['assigned_staff_id'] !== (int) $user['id']) {
+                        $assignedStaff = $db->fetch("SELECT name, email FROM users WHERE id = ?", [$companyData['assigned_staff_id']]);
+                        if ($assignedStaff) {
+                            notify((int) $companyData['assigned_staff_id'], 'Company updated', 'A company assigned to you was updated: ' . $companyData['company_name'], 'info', 'companies.php?action=view&id=' . $id, [
+                                'related_type' => 'companies',
+                                'related_id' => $id,
+                                'email' => [
+                                    'to_email' => $assignedStaff['email'],
+                                    'to_name' => $assignedStaff['name'],
+                                    'subject' => 'Corporate Setup CRM - Company Updated',
+                                    'html' => buildStaffAccountEmailHtml('A Company Assigned To You Was Updated', [
+                                        'Company: ' . $companyData['company_name'],
+                                        'Please open the CRM to review the latest company details.'
+                                    ], 'companies.php?action=view&id=' . $id, 'View Company'),
+                                    'text' => 'A company assigned to you was updated: ' . $companyData['company_name']
+                                ]
+                            ]);
+                        }
+                    }
                     $respond(true, 'Company updated successfully', 'COMPANY_UPDATED');
                 } else {
                     $companyData['created_by'] = $user['id'];
                     $companyData['created_at'] = date('Y-m-d H:i:s');
                     $newId = $db->insert('companies', $companyData);
                     logActivity($user['id'], 'create', 'Created company: ' . $companyData['company_name'], 'companies', $newId);
+                    createOperationNotification((int) $user['id'], 'Company created', 'Company created successfully.', 'success', 'companies.php?action=view&id=' . $newId, [
+                        'related_type' => 'companies',
+                        'related_id' => $newId
+                    ]);
                     $respond(true, 'Company created successfully', 'COMPANY_CREATED', 200, ['id' => $newId]);
                 }
             } catch (Exception $e) {
@@ -171,6 +199,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $durationMs = (int)round((microtime(true) - $requestStartedAt) * 1000);
 
                 logActivity($user['id'], 'delete', 'Deleted company: ' . $company['company_name'], 'companies', $id);
+                createOperationNotification((int) $user['id'], 'Company deleted', 'Company deleted successfully.', 'success', 'companies.php', [
+                    'related_type' => 'companies',
+                    'related_id' => $id
+                ]);
                 error_log(sprintf('[companies][%s] Delete successful id=%s company=%s rows=%s duration_ms=%s', $requestId, (string)$id, $company['company_name'], (string)$deletedRows, (string)$durationMs));
                 $respond(true, 'Company deleted successfully', 'COMPANY_DELETED', 200, [
                     'affectedRows' => $deletedRows,
@@ -202,6 +234,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($contact) {
                         $db->delete('company_contacts', 'id = :id', ['id' => $id]);
                         logActivity($user['id'], 'delete', 'Deleted contact: ' . $contact['name'], 'company_contacts', $id);
+                        createOperationNotification((int) $user['id'], 'Contact deleted', 'Contact deleted successfully.', 'success', 'companies.php', [
+                            'related_type' => 'company_contacts',
+                            'related_id' => $id
+                        ]);
                         $respond(true, 'Contact deleted successfully', 'CONTACT_DELETED');
                     } else {
                         $respond(false, 'Contact not found', 'CONTACT_NOT_FOUND', 404);
@@ -233,6 +269,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $newId = $db->insert('company_contacts', $contactData);
                 logActivity($user['id'], 'create', 'Added contact: ' . $contactData['name'], 'company_contacts', $newId);
+                createOperationNotification((int) $user['id'], 'Contact added', 'Contact added successfully.', 'success', 'companies.php?action=view&id=' . $contactData['company_id'], [
+                    'related_type' => 'company_contacts',
+                    'related_id' => $newId
+                ]);
                 $respond(true, 'Contact added successfully', 'CONTACT_CREATED', 200, ['id' => $newId]);
             } catch (Exception $e) {
                 $respond(false, 'Failed to add contact: ' . $e->getMessage(), 'CONTACT_CREATE_FAILED');

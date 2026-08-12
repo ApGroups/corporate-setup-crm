@@ -83,6 +83,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $communicationData['created_at'] = date('Y-m-d H:i:s');
             $newId = $db->insert('communications', $communicationData);
             logActivity($user['id'], 'create', 'Logged communication', 'communications', $newId);
+            createOperationNotification((int) $user['id'], 'Communication logged', 'Communication logged successfully.', 'success', 'communications.php?action=view&id=' . $newId, [
+                'related_type' => 'communications',
+                'related_id' => $newId
+            ]);
             echo json_encode(['success' => true, 'message' => 'Communication logged successfully', 'redirect' => 'communications.php?action=view&id=' . $newId]);
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'error' => 'Failed to log communication: ' . $e->getMessage()]);

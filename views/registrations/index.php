@@ -187,6 +187,11 @@ $statusOptions = ['pending', 'awaiting_documents', 'submitted', 'processing', 'a
             <a href="registrations.php?action=edit&id=<?= $registration['id'] ?>" class="btn btn-outline">
                 <i class="fas fa-edit"></i> Edit
             </a>
+            <?php if (!empty($isAdmin)): ?>
+                <button type="button" data-delete-registration-id="<?= intval($registration['id']) ?>" class="btn btn-danger">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -389,6 +394,9 @@ $statusOptions = ['pending', 'awaiting_documents', 'submitted', 'processing', 'a
                                         <div class="table-actions">
                                             <a href="registrations.php?action=view&id=<?= $r['id'] ?>" class="btn btn-sm btn-outline"><i class="fas fa-eye"></i></a>
                                             <a href="registrations.php?action=edit&id=<?= $r['id'] ?>" class="btn btn-sm btn-outline"><i class="fas fa-edit"></i></a>
+                                            <?php if (!empty($isAdmin)): ?>
+                                                <button type="button" data-delete-registration-id="<?= intval($r['id']) ?>" class="btn btn-sm btn-danger" title="Delete registration"><i class="fas fa-trash"></i></button>
+                                            <?php endif; ?>
                                         </div>
                                     </td>
                                 </tr>

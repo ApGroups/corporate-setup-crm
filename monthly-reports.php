@@ -64,6 +64,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'monthly_reports',
                 null
             );
+            createOperationNotification((int) $user['id'], 'Monthly reports generated', 'Monthly reports generated successfully.', 'success', 'monthly-reports.php', [
+                'related_type' => 'monthly_reports'
+            ]);
             echo json_encode([
                 'success' => true,
                 'message' => sprintf(
@@ -142,6 +145,13 @@ if ($id > 0 && $action === 'view') {
         http_response_code(403);
         require 'views/errors/403.php';
         exit;
+    }
+
+    if ($report) {
+        $weeklyDecoded = json_decode((string) ($report['weekly_breakdown'] ?? ''), true);
+        $projectDecoded = json_decode((string) ($report['project_breakdown'] ?? ''), true);
+        $report['weekly_breakdown'] = is_array($weeklyDecoded) ? $weeklyDecoded : [];
+        $report['project_breakdown'] = is_array($projectDecoded) ? $projectDecoded : [];
     }
 }
 

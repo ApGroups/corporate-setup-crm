@@ -5,6 +5,7 @@
  */
 
 require_once 'config/config.php';
+require_once 'includes/MailService.php';
 
 $auth = new Auth();
 
@@ -64,10 +65,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['request_reset'])) {
             $success = 'If an account exists with that email, you will receive a password reset link shortly.';
 
             if ($result['success']) {
-                // In production, send an email with the reset link
-                // For now, we'll just log it
-                // $resetLink = APP_URL . '/forgot-password.php?token=' . $result['token'];
-                // mail($email, 'Password Reset', "Click here to reset: $resetLink");
+                $resetLink = appUrl('forgot-password.php?token=' . urlencode($result['token']));
+                $mailer = new MailService();
+                $mailer->send(
+                    $result['user']['email'],
+                    $result['user']['name'] ?? '',
+                    APP_NAME . ' - Password Reset',
+                    buildPasswordResetEmailHtml($resetLink, $result['user']['name'] ?? ''),
+                    'Use this link to reset your Corporate Setup CRM password: ' . $resetLink
+                );
             }
         }
     }

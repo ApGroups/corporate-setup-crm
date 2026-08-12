@@ -32,6 +32,7 @@ $activeNav = 'staff';
 
 $db = Database::getInstance();
 $user = getCurrentUser();
+$auth = new Auth();
 
 $action = $_POST['action'] ?? $_GET['action'] ?? 'list';
 $tab = $_GET['tab'] ?? 'list';
@@ -52,7 +53,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    if (!checkPermission('manage_users')) {
+    $isDeleteAction = $action === 'delete';
+    if (!$isDeleteAction && !checkPermission('manage_users')) {
         echo json_encode(['success' => false, 'error' => 'You are not authorized to manage staff']);
         exit;
     }
@@ -127,12 +129,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ];
 
                 if ($id > 0) {
+                    $existingStaff = $db->fetch(
+                        "SELECT u.*, r.display_name as role_name
+                         FROM users u
+                         LEFT JOIN roles r ON u.role_id = r.id
+                         WHERE u.id = ?",
+                        [$id]
+                    );
                     if ($password !== '') {
                         $staffData['password'] = password_hash($password, HASH_ALGO);
                     }
 
                     $db->update('users', $staffData, 'id = :id', ['id' => $id]);
                     logActivity($user['id'], 'update', 'Updated staff account: ' . $name, 'users', $id);
+
+                    $newRole = $db->fetch("SELECT display_name FROM roles WHERE id = ?", [$roleId]);
+                    $changedFields = [];
+                    if ($existingStaff) {
+                        foreach (['email', 'phone', 'position', 'status', 'department_id', 'role_id'] as $field) {
+                            if ((string) ($existingStaff[$field] ?? '') !== (string) ($staffData[$field] ?? '')) {
+                                $changedFields[] = $field;
+                            }
+                        }
+                    }
+
+                    createOperationNotification(
+                        (int) $user['id'],
+                        'Staff member updated',
+                        'Staff member updated successfully.',
+                        'success',
+                        'staff.php?action=view&id=' . $id,
+                        [
+                            'related_type' => 'users',
+                            'related_id' => $id
+                        ]
+                    );
+
+                    if (!empty($changedFields)) {
+                        $emailLines = [
+                            'Your Corporate Setup CRM account details were updated.',
+                            'Name: ' . $name,
+                            'Email: ' . $email,
+                            'Role: ' . ($newRole['display_name'] ?? 'Unassigned'),
+                            'Status: ' . ucfirst($status),
+                        ];
+                        if ($password !== '') {
+                            $emailLines[] = 'Your password was changed. Use the login page and choose “Forgot password” if you did not request this.';
+                        }
+
+                        notify(
+                            $id,
+                            'Your account was updated',
+                            'Your staff account details were updated successfully.',
+                            'success',
+                            'profile.php',
+                            [
+                                'related_type' => 'users',
+                                'related_id' => $id,
+                                'email' => [
+                                    'to_email' => $email,
+                                    'to_name' => $name,
+                                    'subject' => 'Corporate Setup CRM - Account Updated',
+                                    'html' => buildStaffAccountEmailHtml('Your CRM Account Was Updated', $emailLines, 'profile.php', 'View Profile'),
+                                    'text' => implode("\n", $emailLines),
+                                ]
+                            ]
+                        );
+                    }
                     echo json_encode(['success' => true, 'message' => 'Staff updated successfully', 'redirect' => 'staff.php?action=view&id=' . $id]);
                 } else {
                     $staffData['password'] = password_hash($password, HASH_ALGO);
@@ -140,6 +203,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $newId = $db->insert('users', $staffData);
                     logActivity($user['id'], 'create', 'Created staff account: ' . $name, 'users', $newId);
+
+                    $newRole = $db->fetch("SELECT display_name FROM roles WHERE id = ?", [$roleId]);
+                    createOperationNotification(
+                        (int) $user['id'],
+                        'Staff member created',
+                        'Staff member created successfully.',
+                        'success',
+                        'staff.php?action=view&id=' . $newId,
+                        [
+                            'related_type' => 'users',
+                            'related_id' => $newId
+                        ]
+                    );
+
+                    $reset = $auth->createPasswordReset($email);
+                    $resetPath = $reset['success'] ? 'forgot-password.php?token=' . urlencode($reset['token']) : 'login.php';
+                    $emailLines = [
+                        'Your Corporate Setup CRM account has been created.',
+                        'Name: ' . $name,
+                        'Email: ' . $email,
+                        'Role: ' . ($newRole['display_name'] ?? 'Unassigned'),
+                        'Account status: ' . ucfirst($status),
+                        'For security, use the button below to set or reset your password before your first sign-in.',
+                    ];
+
+                    notify(
+                        $newId,
+                        'Your CRM account was created',
+                        'Your Corporate Setup CRM account has been created.',
+                        'success',
+                        'profile.php',
+                        [
+                            'related_type' => 'users',
+                            'related_id' => $newId,
+                            'email' => [
+                                'to_email' => $email,
+                                'to_name' => $name,
+                                'subject' => 'Corporate Setup CRM - Account Created',
+                                'html' => buildStaffAccountEmailHtml('Your CRM Account Has Been Created', $emailLines, $resetPath, 'Set Password'),
+                                'text' => implode("\n", $emailLines) . ($reset['success'] ? "\nReset link: " . appUrl($resetPath) : ''),
+                            ]
+                        ]
+                    );
                     echo json_encode(['success' => true, 'message' => 'Staff added successfully', 'redirect' => 'staff.php?action=view&id=' . $newId]);
                 }
 
@@ -150,6 +256,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
 
         case 'delete':
+            if (!$auth->hasRole('Administrator')) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'error' => 'You do not have permission to delete staff members.']);
+                exit;
+            }
+
             if ($id <= 0) {
                 echo json_encode(['success' => false, 'error' => 'Invalid staff ID']);
                 exit;
@@ -161,7 +273,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             try {
-                $staffToDelete = $db->fetch('SELECT id, name, status FROM users WHERE id = ?', [$id]);
+                $staffToDelete = $db->fetch('SELECT id, name, email, status FROM users WHERE id = ?', [$id]);
                 if (!$staffToDelete) {
                     echo json_encode(['success' => false, 'error' => 'Staff record not found']);
                     exit;
@@ -180,6 +292,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ], 'id = :id', ['id' => $id]);
 
                 logActivity($user['id'], 'delete', 'Deactivated staff account: ' . $staffToDelete['name'], 'users', $id);
+                createOperationNotification(
+                    (int) $user['id'],
+                    'Staff member deleted',
+                    'Staff member deleted successfully.',
+                    'success',
+                    'staff.php?tab=list',
+                    [
+                        'related_type' => 'users',
+                        'related_id' => $id
+                    ]
+                );
+
+                notify(
+                    $id,
+                    'Your CRM access was deactivated',
+                    'Your Corporate Setup CRM access has been deactivated.',
+                    'warning',
+                    'login.php',
+                    [
+                        'related_type' => 'users',
+                        'related_id' => $id,
+                        'email' => [
+                            'to_email' => $staffToDelete['email'] ?? '',
+                            'to_name' => $staffToDelete['name'],
+                            'subject' => 'Corporate Setup CRM - Account Deactivated',
+                            'html' => buildStaffAccountEmailHtml(
+                                'Your CRM Access Was Deactivated',
+                                [
+                                    'Hello ' . $staffToDelete['name'] . ',',
+                                    'Your Corporate Setup CRM access has been deactivated.',
+                                    'If you believe this was done in error, please contact an administrator.'
+                                ],
+                                'login.php',
+                                'Open Login Page'
+                            ),
+                            'text' => 'Your Corporate Setup CRM access has been deactivated.'
+                        ]
+                    ]
+                );
                 echo json_encode(['success' => true, 'message' => 'Staff deactivated successfully', 'reload' => true]);
             } catch (Exception $e) {
                 error_log('Staff deactivate error: ' . $e->getMessage());
@@ -207,6 +358,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'updated_at' => date('Y-m-d H:i:s')
                 ], 'id = :id', ['id' => $roleId]);
                 refreshSessionPermissions();
+                createOperationNotification((int) $user['id'], 'Role permissions updated', 'Administrator retains full access.', 'success', 'staff.php?tab=roles', [
+                    'related_type' => 'roles',
+                    'related_id' => $roleId
+                ]);
                 echo json_encode(['success' => true, 'message' => 'Administrator retains full access (*)', 'reload' => true]);
                 exit;
             }
@@ -239,6 +394,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ], 'id = :id', ['id' => $roleId]);
 
                 logActivity($user['id'], 'update', 'Updated permissions for role: ' . $role['display_name'], 'roles', $roleId);
+                createOperationNotification((int) $user['id'], 'Role permissions updated', 'Role permissions saved successfully.', 'success', 'staff.php?tab=roles&role_id=' . $roleId, [
+                    'related_type' => 'roles',
+                    'related_id' => $roleId
+                ]);
+
+                $affectedUsers = $db->fetchAll(
+                    "SELECT u.id, u.name, u.email FROM users u WHERE u.role_id = ? AND u.status = 'active'",
+                    [$roleId]
+                );
+                $emailMap = [];
+                foreach ($affectedUsers as $affectedUser) {
+                    $emailMap[(int) $affectedUser['id']] = [
+                        'to_email' => $affectedUser['email'],
+                        'to_name' => $affectedUser['name'],
+                        'subject' => 'Corporate Setup CRM - Permissions Updated',
+                        'html' => buildStaffAccountEmailHtml(
+                            'Your CRM Permissions Were Updated',
+                            [
+                                'Your role permissions were updated by an administrator.',
+                                'Role: ' . $role['display_name'],
+                                'Please sign out and back in if you do not immediately see the expected access.'
+                            ],
+                            'profile.php',
+                            'Open CRM'
+                        ),
+                        'text' => 'Your role permissions were updated by an administrator.'
+                    ];
+                }
+                notifyMultiple(
+                    array_map('intval', array_column($affectedUsers, 'id')),
+                    'Your permissions were updated',
+                    'Your role permissions were updated by an administrator.',
+                    'info',
+                    'profile.php',
+                    [
+                        'related_type' => 'roles',
+                        'related_id' => $roleId,
+                        'email_map' => $emailMap
+                    ]
+                );
                 refreshSessionPermissions();
                 echo json_encode(['success' => true, 'message' => 'Role permissions saved', 'reload' => true]);
             } catch (Exception $e) {

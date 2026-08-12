@@ -49,32 +49,70 @@ $monthNames = [
         </div>
     </div>
 
+    <?php
+    $weeklyBreakdown = is_array($report['weekly_breakdown'] ?? null) ? $report['weekly_breakdown'] : [];
+    $projectBreakdown = is_array($report['project_breakdown'] ?? null) ? $report['project_breakdown'] : [];
+    ?>
+
     <div class="card mb-4">
-        <div class="card-header"><h3 class="card-title">Activity Summary</h3></div>
+        <div class="card-header"><h3 class="card-title">Week by Week</h3></div>
         <div class="card-body">
-            <p style="white-space: pre-wrap;"><?= sanitize($report['activities_summary']) ?: 'No submitted daily activities for this month.' ?></p>
+            <?php if (empty($weeklyBreakdown)): ?>
+                <p class="text-muted">No submitted daily activities for this month.</p>
+            <?php else: ?>
+                <?php foreach ($weeklyBreakdown as $week): ?>
+                    <div class="mb-4" style="padding-bottom: 1rem; border-bottom: 1px solid var(--grey);">
+                        <div class="flex justify-between items-center mb-2">
+                            <strong>Week <?= (int) ($week['week'] ?? 0) ?> — <?= sanitize($week['label'] ?? (formatDate($week['start'] ?? '') . ' – ' . formatDate($week['end'] ?? ''))) ?></strong>
+                            <small class="text-muted"><?= (int) ($week['days'] ?? 0) ?> day<?= ((int) ($week['days'] ?? 0) === 1) ? '' : 's' ?></small>
+                        </div>
+                        <?php if (!empty($week['projects'])): ?>
+                            <p class="text-muted" style="margin-bottom: 0.5rem;"><strong>Projects:</strong> <?= sanitize(implode(', ', (array) $week['projects'])) ?></p>
+                        <?php endif; ?>
+                        <p style="white-space: pre-wrap; margin-bottom: 0.5rem;"><?= sanitize($week['activities'] ?? '') ?: 'No activities recorded this week.' ?></p>
+                        <?php if (!empty($week['clients'])): ?>
+                            <p class="text-muted" style="white-space: pre-wrap; margin-bottom: 0.25rem;"><strong>Clients:</strong> <?= sanitize($week['clients']) ?></p>
+                        <?php endif; ?>
+                        <?php if (!empty($week['issues'])): ?>
+                            <p class="text-muted" style="white-space: pre-wrap;"><strong>Issues:</strong> <?= sanitize($week['issues']) ?></p>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
         </div>
     </div>
 
-    <div class="grid grid-2 gap-4">
-        <div class="card">
-            <div class="card-header"><h3 class="card-title">Projects</h3></div>
-            <div class="card-body">
-                <p class="text-muted" style="white-space: pre-wrap;"><?= sanitize($report['projects_summary']) ?: 'None' ?></p>
-            </div>
-        </div>
-        <div class="card">
-            <div class="card-header"><h3 class="card-title">Clients Contacted</h3></div>
-            <div class="card-body">
-                <p class="text-muted" style="white-space: pre-wrap;"><?= sanitize($report['clients_summary']) ?: 'None' ?></p>
-            </div>
-        </div>
-    </div>
-
-    <div class="card mt-4">
-        <div class="card-header"><h3 class="card-title">Issues Encountered</h3></div>
+    <div class="card mb-4">
+        <div class="card-header"><h3 class="card-title">Project by Project</h3></div>
         <div class="card-body">
-            <p class="text-muted" style="white-space: pre-wrap;"><?= sanitize($report['issues_summary']) ?: 'None reported' ?></p>
+            <?php if (empty($projectBreakdown)): ?>
+                <p class="text-muted">No projects recorded for this month.</p>
+            <?php else: ?>
+                <div class="grid grid-2 gap-4">
+                    <?php foreach ($projectBreakdown as $project): ?>
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title"><?= sanitize($project['name'] ?? 'Unspecified') ?></h3>
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted" style="margin-bottom: 0.5rem;">
+                                    <?= (int) ($project['days'] ?? 0) ?> day<?= ((int) ($project['days'] ?? 0) === 1) ? '' : 's' ?>
+                                    <?php if (!empty($project['weeks'])): ?>
+                                        · <?= sanitize(implode(', ', (array) $project['weeks'])) ?>
+                                    <?php endif; ?>
+                                </p>
+                                <p style="white-space: pre-wrap;"><?= sanitize($project['activities'] ?? '') ?: 'No activities recorded.' ?></p>
+                                <?php if (!empty($project['clients'])): ?>
+                                    <p class="text-muted mt-2" style="white-space: pre-wrap;"><strong>Clients:</strong> <?= sanitize($project['clients']) ?></p>
+                                <?php endif; ?>
+                                <?php if (!empty($project['issues'])): ?>
+                                    <p class="text-muted" style="white-space: pre-wrap;"><strong>Issues:</strong> <?= sanitize($project['issues']) ?></p>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 

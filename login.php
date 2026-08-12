@@ -106,11 +106,7 @@ $flash = getFlashMessage();
                         </div>
                     </div>
 
-                    <div class="form-group" style="display: flex; justify-content: space-between; align-items: center;">
-                        <label class="form-check">
-                            <input type="checkbox" name="remember">
-                            <span>Remember me</span>
-                        </label>
+                    <div class="form-group" style="display: flex; justify-content: flex-end; align-items: center;">
                         <a href="forgot-password.php" style="font-size: 0.875rem;">Forgot password?</a>
                     </div>
 

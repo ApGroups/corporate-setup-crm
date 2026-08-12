@@ -17,6 +17,12 @@ define('APP_VERSION', EnvLoader::get('APP_VERSION', '1.0.0'));
 define('APP_URL', EnvLoader::get('APP_URL', 'https://corporate-setup.com'));
 define('APP_DEBUG', filter_var(EnvLoader::get('APP_DEBUG', false), FILTER_VALIDATE_BOOLEAN));
 define('APP_ENV', EnvLoader::get('APP_ENV', 'production'));
+define('MAIL_HOST', EnvLoader::get('MAIL_HOST', ''));
+define('MAIL_PORT', (int) EnvLoader::get('MAIL_PORT', 0));
+define('MAIL_USERNAME', EnvLoader::get('MAIL_USERNAME', ''));
+define('MAIL_PASSWORD', EnvLoader::get('MAIL_PASSWORD', ''));
+define('MAIL_FROM_ADDRESS', EnvLoader::get('MAIL_FROM_ADDRESS', ''));
+define('MAIL_FROM_NAME', EnvLoader::get('MAIL_FROM_NAME', APP_NAME));
 
 // Security Settings
 define('HASH_ALGO', PASSWORD_ARGON2ID);
@@ -49,6 +55,8 @@ if (APP_ENV === 'production') {
 
 // Security Headers
 if (!headers_sent()) {
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
     // Prevent clickjacking
     header('X-Frame-Options: SAMEORIGIN');
     // Prevent MIME type sniffing

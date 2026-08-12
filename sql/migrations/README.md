@@ -20,9 +20,27 @@ C:\xampp\mysql\bin\mysql.exe -u DB_USER -p DB_NAME < sql\migrations\001_producti
 
 Or via phpMyAdmin: Import → select `001_production_repair.sql`.
 
+## Apply 002_notifications_email_access.sql
+
+```bat
+C:\xampp\mysql\bin\mysql.exe -u DB_USER -p DB_NAME < sql\migrations\002_notifications_email_access.sql
+```
+
+Or via phpMyAdmin: Import → select `002_notifications_email_access.sql`.
+
+## Apply 003_monthly_report_breakdowns.sql
+
+```bat
+C:\xampp\mysql\bin\mysql.exe -u DB_USER -p DB_NAME < sql\migrations\003_monthly_report_breakdowns.sql
+```
+
+Or via phpMyAdmin: Import → select `003_monthly_report_breakdowns.sql`.
+
 ## What it adds
 
 - `task_assignees` (multi-assignee tasks) + backfill from `tasks.assigned_to`
 - `monthly_reports` (persisted monthly aggregation from daily reports)
+- `email_logs` (mail delivery handoff/failure visibility for CRM notifications)
+- `monthly_reports.weekly_breakdown` and `monthly_reports.project_breakdown` (JSON week/project aggregation)
 
 Does **not** drop `daily_reports.tomorrow_plan` (column left for historical data; app no longer uses it).

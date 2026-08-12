@@ -11,7 +11,7 @@
     <div class="card">
         <div class="card-header"><h3 class="card-title">Profile Information</h3></div>
         <div class="card-body text-center" style="padding: 2rem;">
-            <?= generateAvatar($profile['name'], 100) ?>
+            <?= generateAvatar($profile['name'], 100, $profile['avatar'] ?? null) ?>
             <h2 style="margin: 1rem 0 0.25rem;"><?= sanitize($profile['name']) ?></h2>
             <p class="text-muted"><?= sanitize($profile['role_name']) ?></p>
             <p class="text-muted" style="font-size: 0.875rem;"><?= sanitize($profile['department_name']) ?></p>

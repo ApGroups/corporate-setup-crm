@@ -87,12 +87,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($id > 0) {
                 $db->update('opportunities', $opportunityData, 'id = :id', ['id' => $id]);
                 logActivity($user['id'], 'update', 'Updated opportunity: ' . $opportunityData['opportunity_title'], 'opportunities', $id);
+                createOperationNotification((int) $user['id'], 'Opportunity updated', 'Opportunity updated successfully.', 'success', 'opportunities.php?action=view&id=' . $id, [
+                    'related_type' => 'opportunities',
+                    'related_id' => $id
+                ]);
                 echo json_encode(['success' => true, 'message' => 'Opportunity updated successfully', 'redirect' => 'opportunities.php?action=view&id=' . $id]);
             } else {
                 $opportunityData['created_by'] = $user['id'];
                 $opportunityData['created_at'] = date('Y-m-d H:i:s');
                 $newId = $db->insert('opportunities', $opportunityData);
                 logActivity($user['id'], 'create', 'Created opportunity: ' . $opportunityData['opportunity_title'], 'opportunities', $newId);
+                createOperationNotification((int) $user['id'], 'Opportunity created', 'Opportunity created successfully.', 'success', 'opportunities.php?action=view&id=' . $newId, [
+                    'related_type' => 'opportunities',
+                    'related_id' => $newId
+                ]);
                 echo json_encode(['success' => true, 'message' => 'Opportunity created successfully', 'redirect' => 'opportunities.php?action=view&id=' . $newId]);
             }
         } catch (Exception $e) {

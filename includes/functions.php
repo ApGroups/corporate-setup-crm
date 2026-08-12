@@ -9,6 +9,12 @@ function redirect($url) {
     exit();
 }
 
+function appUrl($path = ''): string {
+    $base = rtrim(APP_URL, '/');
+    $path = ltrim((string) $path, '/');
+    return $path === '' ? $base : $base . '/' . $path;
+}
+
 function sanitize($input) {
     if (is_array($input)) {
         return array_map('sanitize', $input);
@@ -32,6 +38,17 @@ function flashMessage($type, $message) {
         'type' => $type,
         'message' => $message
     ];
+}
+
+function normalizeToastType(string $type): string {
+    $type = strtolower(trim($type));
+    if ($type === 'danger') {
+        return 'error';
+    }
+    if (!in_array($type, ['success', 'error', 'info', 'warning'], true)) {
+        return 'info';
+    }
+    return $type;
 }
 
 function getFlashMessage() {
@@ -186,48 +203,156 @@ function logActivity($userId, $action, $description, $table = null, $recordId = 
     }
 }
 
-function notify($userId, $title, $message, $type = 'info', $actionUrl = null) {
+function getSettingValue(string $key, $default = null) {
+    static $settings = null;
+
+    if ($settings === null) {
+        $settings = [];
+        try {
+            $db = Database::getInstance();
+            foreach ($db->fetchAll("SELECT setting_key, setting_value FROM settings") as $row) {
+                $settings[$row['setting_key']] = $row['setting_value'];
+            }
+        } catch (Exception $e) {
+            error_log('Failed to load settings: ' . $e->getMessage());
+        }
+    }
+
+    return array_key_exists($key, $settings) ? $settings[$key] : $default;
+}
+
+function isEmailNotificationsEnabled(): bool {
+    $flag = getSettingValue('enable_notifications', '1');
+    return in_array((string) $flag, ['1', 'true', 'yes', 'on'], true);
+}
+
+function notificationExistsRecently(int $userId, string $title, string $message, ?string $relatedType = null, ?int $relatedId = null): ?int {
     try {
         $db = Database::getInstance();
+        $existing = $db->fetch(
+            "SELECT id FROM notifications
+             WHERE user_id = :user_id
+               AND title = :title
+               AND message = :message
+               AND ((related_type IS NULL AND :related_type IS NULL) OR related_type = :related_type)
+               AND ((related_id IS NULL AND :related_id IS NULL) OR related_id = :related_id)
+               AND created_at >= DATE_SUB(NOW(), INTERVAL 15 SECOND)
+             ORDER BY id DESC
+             LIMIT 1",
+            [
+                'user_id' => $userId,
+                'title' => $title,
+                'message' => $message,
+                'related_type' => $relatedType,
+                'related_id' => $relatedId,
+            ]
+        );
+        return $existing ? (int) $existing['id'] : null;
+    } catch (Exception $e) {
+        error_log('Error checking duplicate notification: ' . $e->getMessage());
+        return null;
+    }
+}
 
-        $db->insert('notifications', [
+function notify($userId, $title, $message, $type = 'info', $actionUrl = null, array $options = []) {
+    try {
+        $db = Database::getInstance();
+        $type = normalizeToastType($type);
+        $relatedType = $options['related_type'] ?? null;
+        $relatedId = isset($options['related_id']) ? (int) $options['related_id'] : null;
+        $email = $options['email'] ?? null;
+
+        $existingId = notificationExistsRecently((int) $userId, (string) $title, (string) $message, $relatedType, $relatedId);
+        if ($existingId) {
+            return ['success' => true, 'id' => $existingId, 'sent_email' => false, 'duplicate' => true];
+        }
+
+        $notificationId = (int) $db->insert('notifications', [
             'user_id' => $userId,
             'title' => $title,
             'message' => $message,
             'type' => $type,
             'link' => $actionUrl,
+            'related_type' => $relatedType,
+            'related_id' => $relatedId,
+            'sent_email' => 0,
             'is_read' => 0,
             'created_at' => date('Y-m-d H:i:s')
         ]);
 
-        return true;
+        $sentEmail = false;
+        if (is_array($email) && !empty($email['to_email']) && isEmailNotificationsEnabled()) {
+            require_once __DIR__ . '/MailService.php';
+
+            $mailer = new MailService();
+            $sendResult = $mailer->send(
+                (string) $email['to_email'],
+                (string) ($email['to_name'] ?? ''),
+                (string) ($email['subject'] ?? $title),
+                (string) ($email['html'] ?? htmlspecialchars($message, ENT_QUOTES, 'UTF-8')),
+                (string) ($email['text'] ?? strip_tags((string) ($email['html'] ?? $message))),
+                $notificationId
+            );
+
+            if ($sendResult['success']) {
+                $db->update('notifications', ['sent_email' => 1], 'id = :id', ['id' => $notificationId]);
+                $sentEmail = true;
+            }
+        }
+
+        return ['success' => true, 'id' => $notificationId, 'sent_email' => $sentEmail, 'duplicate' => false];
     } catch (Exception $e) {
         error_log('Error creating notification: ' . $e->getMessage());
-        return false;
+        return ['success' => false, 'error' => $e->getMessage()];
     }
 }
 
-function notifyMultiple($userIds, $title, $message, $type = 'info', $actionUrl = null) {
-    try {
-        $db = Database::getInstance();
-
-        foreach ($userIds as $userId) {
-            $db->insert('notifications', [
-                'user_id' => $userId,
-                'title' => $title,
-                'message' => $message,
-                'type' => $type,
-                'link' => $actionUrl,
-                'is_read' => 0,
-                'created_at' => date('Y-m-d H:i:s')
-            ]);
+function notifyMultiple($userIds, $title, $message, $type = 'info', $actionUrl = null, array $options = []) {
+    $results = [];
+    foreach ((array) $userIds as $userId) {
+        $userId = (int) $userId;
+        if ($userId <= 0) {
+            continue;
         }
-
-        return true;
-    } catch (Exception $e) {
-        error_log('Error creating notifications: ' . $e->getMessage());
-        return false;
+        $perUserOptions = $options;
+        if (isset($options['email_map'][$userId]) && is_array($options['email_map'][$userId])) {
+            $perUserOptions['email'] = $options['email_map'][$userId];
+        }
+        unset($perUserOptions['email_map']);
+        $results[$userId] = notify($userId, $title, $message, $type, $actionUrl, $perUserOptions);
     }
+    return $results;
+}
+
+function buildStaffAccountEmailHtml(string $heading, array $details, string $ctaPath = 'login.php', string $ctaLabel = 'Open CRM'): string {
+    require_once __DIR__ . '/MailService.php';
+    $mailer = new MailService();
+    return $mailer->renderDefaultTemplate($heading, $details, appUrl($ctaPath), $ctaLabel);
+}
+
+function buildPasswordResetEmailHtml(string $resetUrl, string $name = ''): string {
+    $lines = [];
+    if ($name !== '') {
+        $lines[] = 'Hello ' . $name . ',';
+    }
+    $lines[] = 'A password reset was requested for your Corporate Setup CRM account.';
+    $lines[] = 'Use the button below to set a new password. This link expires in 1 hour.';
+    return buildStaffAccountEmailHtml('Reset Your CRM Password', $lines, $resetUrl, 'Reset Password');
+}
+
+function createOperationNotification(int $actorId, string $title, string $message, string $type = 'success', ?string $actionUrl = null, array $options = []): array {
+    $result = notify($actorId, $title, $message, $type, $actionUrl, $options);
+    if (!empty($options['log_action'])) {
+        logActivity(
+            $actorId,
+            $options['log_action'],
+            $options['log_description'] ?? $message,
+            $options['log_table'] ?? null,
+            $options['log_record_id'] ?? null
+        );
+    }
+
+    return $result;
 }
 
 /**
@@ -266,14 +391,23 @@ function refreshSessionPermissions(): void
     try {
         $db = Database::getInstance();
         $row = $db->fetch(
-            "SELECT r.name as role_name, r.permissions
+            "SELECT u.email, u.name, u.avatar, u.status, u.must_change_password, d.name as department_name, d.id as department_id,
+                    r.name as role_name, r.permissions
              FROM users u
              JOIN roles r ON u.role_id = r.id
+             LEFT JOIN departments d ON u.department_id = d.id
              WHERE u.id = ?",
             [$_SESSION['user_id']]
         );
         if ($row) {
+            $_SESSION['user_name'] = $row['name'];
+            $_SESSION['user_email'] = $row['email'];
             $_SESSION['user_role'] = $row['role_name'];
+            $_SESSION['user_department'] = $row['department_name'];
+            $_SESSION['user_department_id'] = $row['department_id'];
+            $_SESSION['user_avatar'] = $row['avatar'] ?: null;
+            $_SESSION['user_status'] = $row['status'];
+            $_SESSION['must_change_password'] = (int) ($row['must_change_password'] ?? 0);
             $perms = $row['permissions'] ? json_decode($row['permissions'], true) : [];
             $_SESSION['permissions'] = is_array($perms) ? $perms : [];
         }
@@ -346,7 +480,9 @@ function getCurrentUser() {
         'email' => $_SESSION['user_email'],
         'role' => $_SESSION['user_role'],
         'department' => $_SESSION['user_department'],
-        'avatar' => $_SESSION['user_avatar'] ?? null
+        'avatar' => $_SESSION['user_avatar'] ?? null,
+        'status' => $_SESSION['user_status'] ?? 'active',
+        'must_change_password' => (int) ($_SESSION['must_change_password'] ?? 0)
     ];
 }
 

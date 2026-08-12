@@ -47,7 +47,15 @@ function getAvatarColor($name) {
     return $colors[abs($hash) % count($colors)];
 }
 
-function generateAvatar($name, $size = 40) {
+function generateAvatar($name, $size = 40, $avatarPath = null) {
+    if (!empty($avatarPath)) {
+        $safePath = sanitize($avatarPath);
+        $src = preg_match('#^https?://#i', $safePath)
+            ? $safePath
+            : ((strpos($safePath, 'uploads/') === 0 ? '' : 'uploads/') . ltrim($safePath, '/'));
+        return '<img src="' . $src . '" alt="' . sanitize($name) . '" class="avatar" style="width:' . $size . 'px;height:' . $size . 'px;object-fit:cover;border-radius:50%;">';
+    }
+
     $initials = getInitials($name);
     $color = getAvatarColor($name);
 
