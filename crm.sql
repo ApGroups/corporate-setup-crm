@@ -161,7 +161,8 @@ CREATE TABLE IF NOT EXISTS `companies` (
     FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON DELETE SET NULL,
     INDEX `idx_company_status` (`status`),
     INDEX `idx_company_subscription` (`subscription_status`),
-    INDEX `idx_company_assigned` (`assigned_staff_id`)
+    INDEX `idx_company_assigned` (`assigned_staff_id`),
+    UNIQUE KEY `uq_company_rc_number` (`rc_number`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -265,10 +266,11 @@ CREATE TABLE IF NOT EXISTS `documents` (
         'tax_clearance', 'financial_statement', 'other'
     ) NOT NULL,
     `document_name` VARCHAR(200) NOT NULL,
-    `file_name` VARCHAR(255) NOT NULL,
-    `file_path` VARCHAR(255) NOT NULL,
+    `file_name` VARCHAR(255) NULL,
+    `file_path` VARCHAR(255) NULL,
     `file_size` INT,
     `file_type` VARCHAR(50),
+    `external_url` VARCHAR(500) NULL,
     `company_id` INT,
     `registration_id` INT,
     `uploaded_by` INT NOT NULL,
@@ -284,7 +286,8 @@ CREATE TABLE IF NOT EXISTS `documents` (
     FOREIGN KEY (`uploaded_by`) REFERENCES `users`(`id`) ON DELETE NO ACTION,
     INDEX `idx_document_company` (`company_id`),
     INDEX `idx_document_type` (`document_type`),
-    INDEX `idx_document_expiry` (`expiry_date`)
+    INDEX `idx_document_expiry` (`expiry_date`),
+    UNIQUE KEY `uq_company_doc_url` (`company_id`, `external_url`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -495,7 +498,7 @@ CREATE TABLE IF NOT EXISTS `opportunities` (
 CREATE TABLE IF NOT EXISTS `elite_members` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
     `company_id` INT NOT NULL,
-    `membership_tier` ENUM('basic', ' premium', 'elite', 'platinum') DEFAULT 'elite',
+    `membership_tier` ENUM('basic', 'premium', 'elite', 'platinum') DEFAULT 'elite',
     `membership_start_date` DATE NOT NULL,
     `membership_end_date` DATE,
     `status` ENUM('active', 'expired', 'suspended', 'cancelled') DEFAULT 'active',
@@ -509,7 +512,8 @@ CREATE TABLE IF NOT EXISTS `elite_members` (
     FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE CASCADE,
     FOREIGN KEY (`assigned_account_manager`) REFERENCES `users`(`id`) ON DELETE SET NULL,
     INDEX `idx_elite_status` (`status`),
-    INDEX `idx_elite_company` (`company_id`)
+    INDEX `idx_elite_company` (`company_id`),
+    UNIQUE KEY `uq_elite_company_start` (`company_id`, `membership_start_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -765,6 +769,25 @@ CREATE TABLE IF NOT EXISTS `monthly_reports` (
     FOREIGN KEY (`department_id`) REFERENCES `departments`(`id`) ON DELETE SET NULL,
     FOREIGN KEY (`generated_by`) REFERENCES `users`(`id`) ON DELETE SET NULL,
     INDEX `idx_monthly_period` (`report_year`, `report_month`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table: client_reports
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `client_reports` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `company_id` INT NOT NULL,
+    `report_reference` VARCHAR(40) NOT NULL,
+    `period_start` DATE NOT NULL,
+    `period_end` DATE NOT NULL,
+    `status` ENUM('generated', 'failed') DEFAULT 'generated',
+    `generated_by` INT NULL,
+    `generated_at` DATETIME NOT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `uq_client_report_ref` (`report_reference`),
+    FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`generated_by`) REFERENCES `users`(`id`) ON DELETE SET NULL,
+    INDEX `idx_client_reports_company` (`company_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

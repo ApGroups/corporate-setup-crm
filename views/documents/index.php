@@ -120,6 +120,62 @@ $docTypes = ['certificate', 'license', 'permit', 'insurance', 'receipt', 'invoic
         });
     </script>
 
+<?php elseif ($action === 'add_link'): ?>
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Add Document Link</h1>
+            <p class="page-subtitle"><a href="documents.php">Documents</a> &rsaquo; Link</p>
+        </div>
+        <div class="btn-group">
+            <a href="documents.php" class="btn btn-outline">Cancel</a>
+        </div>
+    </div>
+
+    <form method="POST">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="add_link">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">HTTPS link</h3></div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label class="form-label required" for="document_name">Title</label>
+                    <input type="text" id="document_name" name="document_name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label required" for="document_type">Document Type</label>
+                    <select id="document_type" name="document_type" class="form-control" required>
+                        <option value="">Select Type</option>
+                        <?php foreach ($docTypes as $t): ?>
+                            <option value="<?= $t ?>"><?= ucwords(str_replace('_', ' ', $t)) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label required" for="company_id">Company</label>
+                    <select id="company_id" name="company_id" class="form-control" required>
+                        <option value="">Select Company</option>
+                        <?php foreach ($companies as $c): ?>
+                            <option value="<?= $c['id'] ?>" <?= $companyId == $c['id'] ? 'selected' : '' ?>><?= sanitize($c['company_name']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label required" for="external_url">HTTPS URL</label>
+                    <input type="url" id="external_url" name="external_url" class="form-control" placeholder="https://" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="expiry_date">Expiry Date</label>
+                    <input type="date" id="expiry_date" name="expiry_date" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="description">Description</label>
+                    <textarea id="description" name="description" class="form-control" rows="3"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Save Link</button>
+            </div>
+        </div>
+    </form>
+
 <?php else: ?>
     <!-- List View -->
     <div class="page-header">
@@ -128,6 +184,7 @@ $docTypes = ['certificate', 'license', 'permit', 'insurance', 'receipt', 'invoic
             <p class="page-subtitle">Manage company documents and certificates</p>
         </div>
         <div class="btn-group">
+            <a href="documents.php?action=add_link" class="btn btn-outline"><i class="fas fa-link"></i> Add Link</a>
             <a href="documents.php?action=upload" class="btn btn-primary"><i class="fas fa-upload"></i> Upload Document</a>
         </div>
     </div>
@@ -171,9 +228,15 @@ $docTypes = ['certificate', 'license', 'permit', 'insurance', 'receipt', 'invoic
                             <?php foreach ($documents as $doc): ?>
                                 <tr>
                                     <td>
-                                        <i class="fas <?= getFileIcon($doc['file_type']) ?>"></i>
-                                        <a href="uploads/<?= $doc['file_path'] ?>" target="_blank" class="table-link"><?= sanitize($doc['document_name']) ?></a>
-                                        <br><small class="text-muted"><?= sanitize($doc['file_name']) ?></small>
+                                        <?php if (!empty($doc['external_url'])): ?>
+                                            <i class="fas fa-link"></i>
+                                            <a href="<?= sanitize($doc['external_url']) ?>" target="_blank" rel="noopener noreferrer" class="table-link"><?= sanitize($doc['document_name']) ?></a>
+                                            <br><small class="text-muted">External link</small>
+                                        <?php else: ?>
+                                            <i class="fas <?= getFileIcon($doc['file_type'] ?? '') ?>"></i>
+                                            <a href="uploads/<?= sanitize($doc['file_path'] ?? '') ?>" target="_blank" class="table-link"><?= sanitize($doc['document_name']) ?></a>
+                                            <br><small class="text-muted"><?= sanitize($doc['file_name'] ?? '') ?></small>
+                                        <?php endif; ?>
                                     </td>
                                     <td><?= ucwords(str_replace('_', ' ', $doc['document_type'])) ?></td>
                                     <td><?= $doc['company_name'] ? '<a href="companies.php?action=view&id=' . $doc['company_id'] . '">' . sanitize($doc['company_name']) . '</a>' : '-' ?></td>
@@ -193,7 +256,11 @@ $docTypes = ['certificate', 'license', 'permit', 'insurance', 'receipt', 'invoic
                                     </td>
                                     <td>
                                         <div class="table-actions">
-                                            <a href="uploads/<?= $doc['file_path'] ?>" target="_blank" class="btn btn-sm btn-outline"><i class="fas fa-download"></i></a>
+                                            <?php if (!empty($doc['external_url'])): ?>
+                                                <a href="<?= sanitize($doc['external_url']) ?>" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline">Open link</a>
+                                            <?php elseif (!empty($doc['file_path'])): ?>
+                                                <a href="uploads/<?= sanitize($doc['file_path']) ?>" target="_blank" class="btn btn-sm btn-outline"><i class="fas fa-download"></i></a>
+                                            <?php endif; ?>
                                             <button onclick="deleteDoc(<?= $doc['id'] ?>)" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></button>
                                         </div>
                                     </td>

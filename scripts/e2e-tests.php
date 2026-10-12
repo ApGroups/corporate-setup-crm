@@ -17,6 +17,8 @@ require_once __DIR__ . '/../helpers/formatters.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/monthly_reports.php';
+require_once __DIR__ . '/../includes/crm_exports.php';
+require_once __DIR__ . '/../includes/client_reports.php';
 require_once __DIR__ . '/../includes/MailService.php';
 
 $results = [];
@@ -307,6 +309,127 @@ $loginPhp = file_get_contents(__DIR__ . '/../login.php');
 assert_true('Protected pages send no-store cache headers', strpos($configPhp, 'Cache-Control: no-store') !== false);
 assert_true('Logout sets success flash', strpos($logoutPhp, "flashMessage('success'") !== false);
 assert_true('Remember me removed from login UI', strpos($loginPhp, 'Remember me') === false);
+
+// --- Integrity, exports, document links, elites, client reports ---
+$rc = 'E2E-RC-' . date('YmdHis');
+$rcCompanyId = (int) $db->insert('companies', [
+    'company_name' => 'E2E RC Company',
+    'rc_number' => $rc,
+    'status' => 'prospect',
+    'created_by' => 1,
+    'created_at' => date('Y-m-d H:i:s'),
+]);
+$rcDuplicate = $db->fetch("SELECT id FROM companies WHERE rc_number = ? AND id <> ?", [$rc, 0]);
+$secondBlocked = false;
+try {
+    $db->insert('companies', [
+        'company_name' => 'E2E RC Duplicate',
+        'rc_number' => $rc,
+        'status' => 'prospect',
+        'created_by' => 1,
+        'created_at' => date('Y-m-d H:i:s'),
+    ]);
+} catch (Exception $e) {
+    $secondBlocked = stripos($e->getMessage(), 'Duplicate') !== false;
+}
+assert_true('Duplicate RC number rejected', !empty($rcDuplicate) && $secondBlocked);
+$db->delete('companies', 'id = :id', ['id' => $rcCompanyId]);
+
+$eliteCompany = $db->fetch("SELECT id, company_name FROM companies ORDER BY id LIMIT 1");
+$eliteId = 0;
+if ($eliteCompany) {
+    $eliteStart = '2098-06-15';
+    $db->delete('elite_members', 'company_id = :company_id AND membership_start_date = :start', [
+        'company_id' => $eliteCompany['id'],
+        'start' => $eliteStart,
+    ]);
+    $eliteId = (int) $db->insert('elite_members', [
+        'company_id' => $eliteCompany['id'],
+        'membership_tier' => 'premium',
+        'membership_start_date' => $eliteStart,
+        'status' => 'active',
+        'created_at' => date('Y-m-d H:i:s'),
+    ]);
+}
+[$eliteWhere, $eliteParams] = eliteMembershipWhere($eliteCompany['company_name'] ?? '', '');
+$eliteParams[] = $eliteId;
+$eliteFound = $eliteId ? $db->fetch(
+    "SELECT em.id
+     FROM elite_members em
+     LEFT JOIN companies c ON em.company_id = c.id
+     LEFT JOIN users u ON em.assigned_account_manager = u.id
+     WHERE {$eliteWhere} AND em.id = ?",
+    $eliteParams
+) : null;
+assert_true('Elite list query returns seeded member', !empty($eliteFound));
+if ($eliteId) {
+    $db->delete('elite_members', 'id = :id', ['id' => $eliteId]);
+}
+
+$companyExport = exportCompanies($db, '2000-01-01', date('Y-m-d'));
+assert_true('Export companies SQL runs', is_array($companyExport));
+
+assert_true('Document link rejects http', isHttpsUrl('http://example.com/file.pdf') === false);
+assert_true('Document link accepts https', isHttpsUrl('https://example.com/file.pdf') === true);
+$linkCompanyId = (int) ($eliteCompany['id'] ?? 0);
+$linkUrl = 'https://example.com/e2e-doc-' . date('YmdHis');
+$linkId = 0;
+if ($linkCompanyId > 0) {
+    $linkId = (int) $db->insert('documents', [
+        'document_type' => 'other',
+        'document_name' => 'E2E HTTPS link',
+        'file_name' => null,
+        'file_path' => null,
+        'external_url' => $linkUrl,
+        'company_id' => $linkCompanyId,
+        'uploaded_by' => 1,
+        'status' => 'active',
+        'created_at' => date('Y-m-d H:i:s'),
+    ]);
+}
+$linkSaved = $linkId ? $db->fetch("SELECT id, external_url FROM documents WHERE id = ?", [$linkId]) : null;
+assert_true('HTTPS document link stored', !empty($linkSaved) && $linkSaved['external_url'] === $linkUrl);
+if ($linkId) {
+    $db->delete('documents', 'id = :id', ['id' => $linkId]);
+}
+
+$reportCompanyA = (int) $db->insert('companies', [
+    'company_name' => 'E2E Report A ' . date('His'),
+    'status' => 'active',
+    'created_by' => 1,
+    'created_at' => date('Y-m-d H:i:s'),
+]);
+$reportCompanyB = (int) $db->insert('companies', [
+    'company_name' => 'E2E Report B ' . date('His'),
+    'status' => 'active',
+    'created_by' => 1,
+    'created_at' => date('Y-m-d H:i:s'),
+]);
+$reportType = $db->fetch("SELECT id FROM registration_types ORDER BY id LIMIT 1");
+if ($reportType) {
+    $db->insert('registrations', [
+        'company_id' => $reportCompanyA,
+        'registration_type_id' => $reportType['id'],
+        'status' => 'pending',
+        'priority' => 'medium',
+        'created_by' => 1,
+        'created_at' => date('Y-m-d H:i:s'),
+        'updated_at' => date('Y-m-d H:i:s'),
+    ]);
+}
+$periodFrom = date('Y-m-01');
+$periodTo = date('Y-m-t');
+$reportForB = buildClientReport($db, $reportCompanyB, $periodFrom, $periodTo, 1, false);
+$reportForA = buildClientReport($db, $reportCompanyA, $periodFrom, $periodTo, 1, false);
+$scoped = !empty($reportForB['ok']) && !empty($reportForA['ok'])
+    && (int) $reportForB['company']['id'] === $reportCompanyB
+    && count($reportForB['registrations']) === 0
+    && count($reportForA['registrations']) === 1
+    && (int) $reportForA['registrations'][0]['id'] > 0;
+assert_true('Client report query is scoped to one company', $scoped);
+$db->delete('registrations', 'company_id = :id', ['id' => $reportCompanyA]);
+$db->delete('companies', 'id = :id', ['id' => $reportCompanyA]);
+$db->delete('companies', 'id = :id', ['id' => $reportCompanyB]);
 
 echo PHP_EOL . "Summary: $pass passed, $fail failed" . PHP_EOL;
 exit($fail > 0 ? 1 : 0);

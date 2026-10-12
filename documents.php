@@ -100,14 +100,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             exit;
 
+        case 'add_link':
+            $url = trim((string) ($_POST['external_url'] ?? ''));
+            $name = sanitize($_POST['document_name'] ?? '');
+            $docType = sanitize($_POST['document_type'] ?? '');
+            $linkCompanyId = intval($_POST['company_id'] ?? 0) ?: null;
+
+            if ($name === '' || $docType === '' || $linkCompanyId === null) {
+                echo json_encode(['success' => false, 'error' => 'Title, type, and company are required']);
+                exit;
+            }
+            if (!isHttpsUrl($url)) {
+                echo json_encode(['success' => false, 'error' => 'Enter a valid HTTPS link']);
+                exit;
+            }
+
+            $existingLink = $db->fetch(
+                "SELECT id FROM documents WHERE company_id = ? AND external_url = ? AND status = 'active'",
+                [$linkCompanyId, $url]
+            );
+            if ($existingLink) {
+                echo json_encode(['success' => false, 'error' => 'This link is already saved for that company']);
+                exit;
+            }
+
+            try {
+                $newId = $db->insert('documents', [
+                    'document_type' => $docType,
+                    'document_name' => $name,
+                    'file_name' => null,
+                    'file_path' => null,
+                    'external_url' => $url,
+                    'company_id' => $linkCompanyId,
+                    'uploaded_by' => $user['id'],
+                    'description' => sanitize($_POST['description'] ?? ''),
+                    'expiry_date' => ($_POST['expiry_date'] ?? '') !== '' ? $_POST['expiry_date'] : null,
+                    'created_at' => date('Y-m-d H:i:s')
+                ]);
+                logActivity($user['id'], 'create', 'Added document link: ' . $name, 'documents', $newId);
+                echo json_encode(['success' => true, 'message' => 'Document link saved', 'reload' => true]);
+            } catch (Exception $e) {
+                $duplicateKey = stripos($e->getMessage(), 'Duplicate') !== false;
+                echo json_encode(['success' => false, 'error' => $duplicateKey ? 'This link is already saved for that company' : 'Failed to save document link']);
+            }
+            exit;
+
         case 'delete':
             if ($id > 0) {
                 try {
                     $doc = $db->fetch("SELECT * FROM documents WHERE id = ?", [$id]);
                     if ($doc) {
-                        $filePath = UPLOAD_PATH . $doc['file_path'];
-                        if (file_exists($filePath)) {
-                            @unlink($filePath);
+                        if (!empty($doc['file_path'])) {
+                            $filePath = UPLOAD_PATH . $doc['file_path'];
+                            if (file_exists($filePath)) {
+                                @unlink($filePath);
+                            }
                         }
                         $db->update('documents', ['status' => 'deleted'], 'id = :id', ['id' => $id]);
                         logActivity($user['id'], 'delete', 'Deleted document: ' . $doc['document_name'], 'documents', $id);

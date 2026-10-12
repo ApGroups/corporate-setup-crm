@@ -15,6 +15,33 @@ function appUrl($path = ''): string {
     return $path === '' ? $base : $base . '/' . $path;
 }
 
+function isHttpsUrl($url) {
+    $url = trim((string) $url);
+    return $url !== '' && preg_match('#^https://#i', $url) === 1 && filter_var($url, FILTER_VALIDATE_URL) !== false;
+}
+
+function eliteMembershipWhere($search, $status) {
+    $where = ['1=1'];
+    $params = [];
+    $search = trim((string) $search);
+    $status = trim((string) $status);
+
+    if ($search !== '') {
+        $where[] = '(c.company_name LIKE ? OR em.membership_tier LIKE ? OR u.name LIKE ?)';
+        $like = '%' . $search . '%';
+        $params[] = $like;
+        $params[] = $like;
+        $params[] = $like;
+    }
+
+    if ($status !== '' && strcasecmp($status, 'all') !== 0) {
+        $where[] = 'em.status = ?';
+        $params[] = $status;
+    }
+
+    return [implode(' AND ', $where), $params];
+}
+
 function sanitize($input) {
     if (is_array($input)) {
         return array_map('sanitize', $input);

@@ -83,9 +83,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $respond(false, 'You are not authorized to modify companies', 'AUTH_FORBIDDEN_COMPANY_WRITE', 403);
             }
 
+            $rcNumber = trim((string) ($_POST['rc_number'] ?? ''));
             $companyData = [
                 'company_name' => sanitize($_POST['company_name']),
-                'rc_number' => sanitize($_POST['rc_number'] ?? ''),
+                'rc_number' => $rcNumber === '' ? null : sanitize($rcNumber),
                 'industry_id' => intval($_POST['industry_id'] ?? 0) ?: null,
                 'address' => sanitize($_POST['address'] ?? ''),
                 'city' => sanitize($_POST['city'] ?? ''),
@@ -106,6 +107,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'is_elite' => isset($_POST['is_elite']) ? 1 : 0,
                 'updated_at' => date('Y-m-d H:i:s')
             ];
+
+            if ($companyData['rc_number'] !== null) {
+                $duplicate = $db->fetch(
+                    "SELECT id, company_name FROM companies WHERE rc_number = ? AND id <> ?",
+                    [$companyData['rc_number'], $id > 0 ? $id : 0]
+                );
+                if ($duplicate) {
+                    $respond(false, 'A company with this RC number already exists: ' . $duplicate['company_name'], 'COMPANY_DUPLICATE_RC', 409);
+                }
+            }
 
             try {
                 if ($id > 0) {
@@ -148,7 +159,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $respond(true, 'Company created successfully', 'COMPANY_CREATED', 200, ['id' => $newId]);
                 }
             } catch (Exception $e) {
+                $sqlStateCode = ($e instanceof PDOException && isset($e->errorInfo[1])) ? (int) $e->errorInfo[1] : 0;
+                $duplicateKey = $sqlStateCode === 1062 || stripos($e->getMessage(), 'Duplicate') !== false;
                 error_log(sprintf('[companies][%s] Save failed action=%s id=%s error=%s', $requestId, $action, (string)$id, $e->getMessage()));
+                if ($duplicateKey) {
+                    $respond(false, 'A company with this RC number already exists.', 'COMPANY_DUPLICATE_RC', 409);
+                }
                 $respond(false, 'Failed to save company: ' . $e->getMessage(), 'COMPANY_SAVE_FAILED');
             }
 

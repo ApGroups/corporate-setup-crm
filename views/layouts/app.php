@@ -140,7 +140,7 @@ $pendingTasks = $db->query(
                 </div>
                 <?php endif; ?>
 
-                <?php if (checkPermission('view_reports') || checkPermission('submit_reports') || checkPermission('approve_reports')): ?>
+                <?php if (checkPermission('view_reports') || checkPermission('submit_reports') || checkPermission('approve_reports') || checkPermission('view_companies')): ?>
                 <div class="nav-section">
                     <div class="nav-section-title">Reports</div>
                     <?php if (checkPermission('submit_reports') || checkPermission('view_reports') || checkPermission('approve_reports')): ?>
@@ -157,6 +157,12 @@ $pendingTasks = $db->query(
                     <a href="reports.php" class="nav-item <?= $activeNav === 'reports' ? 'active' : '' ?>">
                         <i class="fas fa-chart-bar"></i>
                         <span>Reports</span>
+                    </a>
+                    <?php endif; ?>
+                    <?php if (checkPermission('view_companies')): ?>
+                    <a href="client-reports.php" class="nav-item <?= $activeNav === 'client-reports' ? 'active' : '' ?>">
+                        <i class="fas fa-file-contract"></i>
+                        <span>Client Reports</span>
                     </a>
                     <?php endif; ?>
                 </div>
