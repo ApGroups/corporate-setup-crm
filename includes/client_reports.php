@@ -36,12 +36,13 @@ function buildClientReport(Database $db, $companyId, $from, $to, $userId = null,
     $rangeEnd = $to . ' 23:59:59';
 
     $registrations = $db->fetchAll(
-        "SELECT r.id, rt.name AS registration_type, r.status, r.submission_date, r.expiry_date, r.created_at
+        "SELECT r.id, rt.name AS registration_type, r.status, r.remarks, r.documents_missing,
+                r.submission_date, r.expiry_date, r.created_at
          FROM registrations r
          JOIN registration_types rt ON r.registration_type_id = rt.id
-         WHERE r.company_id = ? AND r.created_at BETWEEN ? AND ?
-         ORDER BY r.created_at DESC",
-        [$companyId, $rangeStart, $rangeEnd]
+         WHERE r.company_id = ? AND r.status <> 'rejected'
+         ORDER BY rt.name, r.id",
+        [$companyId]
     );
 
     $communications = $db->fetchAll(
@@ -106,140 +107,158 @@ function buildClientReport(Database $db, $companyId, $from, $to, $userId = null,
     ];
 }
 
+function clientReportStatusPhrase(array $row) {
+    $remarks = trim((string) ($row['remarks'] ?? ''));
+    if ($remarks !== '') {
+        return $remarks;
+    }
+
+    $missing = trim((string) ($row['documents_missing'] ?? ''));
+    $status = (string) ($row['status'] ?? '');
+    if ($missing !== '') {
+        return 'Awaiting ' . $missing;
+    }
+
+    $phrases = [
+        'pending' => 'Pending',
+        'awaiting_documents' => 'Ongoing – Awaiting outstanding client documentation',
+        'submitted' => 'Submitted',
+        'processing' => 'Ongoing – Processing',
+        'approved' => 'Completed',
+        'expired' => 'Expired',
+        'renewal_required' => 'Renewal required',
+    ];
+
+    return $phrases[$status] ?? ucwords(str_replace('_', ' ', $status));
+}
+
 function clientReportCsvRows(array $report) {
-    $company = $report['company'];
+    $company = $report['company']['company_name'];
     $rows = [
-        ['section' => 'Company', 'item' => 'Name', 'detail' => $company['company_name'], 'extra' => $company['status']],
-        ['section' => 'Company', 'item' => 'RC number', 'detail' => $company['rc_number'] ?? '', 'extra' => $company['subscription_status']],
-        ['section' => 'Company', 'item' => 'Contact', 'detail' => trim(($company['email'] ?? '') . ' ' . ($company['phone'] ?? '')), 'extra' => $company['assigned_staff'] ?? ''],
-        ['section' => 'Period', 'item' => 'Range', 'detail' => $report['from'] . ' to ' . $report['to'], 'extra' => $report['reference']],
+        ['section' => 'Message', 'item' => 'Company', 'detail' => $company],
     ];
 
     if (empty($report['registrations'])) {
-        $rows[] = ['section' => 'Registrations', 'item' => '', 'detail' => 'No registrations in this period.', 'extra' => ''];
+        $rows[] = ['section' => 'Registration', 'item' => '', 'detail' => 'No registrations to report.'];
     }
     foreach ($report['registrations'] as $row) {
-        $rows[] = ['section' => 'Registrations', 'item' => $row['registration_type'], 'detail' => $row['status'], 'extra' => $row['created_at']];
+        $rows[] = [
+            'section' => 'Registration',
+            'item' => $row['registration_type'],
+            'detail' => clientReportStatusPhrase($row),
+        ];
     }
 
-    if (empty($report['communications'])) {
-        $rows[] = ['section' => 'Communications', 'item' => '', 'detail' => 'No communications in this period.', 'extra' => ''];
-    }
-    foreach ($report['communications'] as $row) {
-        $rows[] = ['section' => 'Communications', 'item' => $row['subject'] ?? $row['communication_type'], 'detail' => $row['summary'], 'extra' => $row['communication_date']];
-    }
-
-    if (empty($report['tasks'])) {
-        $rows[] = ['section' => 'Tasks', 'item' => '', 'detail' => 'No tasks in this period.', 'extra' => ''];
-    }
-    foreach ($report['tasks'] as $row) {
-        $rows[] = ['section' => 'Tasks', 'item' => $row['title'], 'detail' => $row['status'], 'extra' => $row['due_date']];
-    }
-
-    if (empty($report['documents'])) {
-        $rows[] = ['section' => 'Documents', 'item' => '', 'detail' => 'No active documents.', 'extra' => ''];
-    }
-    foreach ($report['documents'] as $row) {
-        $rows[] = ['section' => 'Documents', 'item' => $row['document_name'], 'detail' => $row['external_url'] ?: ($row['file_name'] ?? ''), 'extra' => $row['document_type']];
-    }
-
-    if (empty($report['elite'])) {
-        $rows[] = ['section' => 'Elite', 'item' => '', 'detail' => 'No elite membership.', 'extra' => ''];
-    } else {
-        $elite = $report['elite'];
-        $rows[] = ['section' => 'Elite', 'item' => $elite['membership_tier'], 'detail' => $elite['status'], 'extra' => $elite['membership_start_date']];
-    }
+    $rows[] = ['section' => 'Login', 'item' => 'Link', 'detail' => 'https://www.corporate-setup.app/login'];
+    $rows[] = ['section' => 'Contact', 'item' => 'Email', 'detail' => 'compliance@corporate-setup.com'];
+    $rows[] = ['section' => 'Contact', 'item' => 'Phone', 'detail' => '+234 702 560 0065'];
 
     return $rows;
 }
 
-function renderClientReportHtml(array $report) {
-    $company = $report['company'];
+function renderEliteMessageText(array $report) {
+    $name = (string) $report['company']['company_name'];
+    $lines = [
+        '## ' . $name,
+        '',
+        'Dear Valued Elite,',
+        '',
+        'This is an official compliance update from Corporate-setup.app, your digital compliance management platform powered by Corporate Setup.',
+        '',
+        'Kindly review your company status below:',
+        '',
+        'Company: ' . $name,
+        '',
+    ];
+
+    if (empty($report['registrations'])) {
+        $lines[] = 'No registrations to report.';
+    } else {
+        foreach ($report['registrations'] as $row) {
+            $lines[] = $row['registration_type'] . ': ' . clientReportStatusPhrase($row);
+        }
+    }
+
+    $lines[] = '';
+    $lines[] = 'Login Details:';
+    $lines[] = 'Link: https://www.corporate-setup.app/login';
+    $lines[] = '';
+    $lines[] = 'For more information about our services, please visit: corporate-setup.app';
+    $lines[] = '';
+    $lines[] = 'Contact us at: compliance@corporate-setup.com or +234 702 560 0065';
+    $lines[] = '';
+    $lines[] = 'Kind regards,';
+    $lines[] = 'Corporate Setup Team';
+
+    return implode("\n", $lines);
+}
+
+function renderEliteMessagesText(array $reports) {
+    $chunks = ['# Elite Monthly Messages', ''];
+    foreach ($reports as $index => $report) {
+        if ($index > 0) {
+            $chunks[] = '';
+            $chunks[] = '──────────────────────────────';
+            $chunks[] = '';
+        }
+        $chunks[] = renderEliteMessageText($report);
+    }
+
+    return implode("\n", $chunks) . "\n";
+}
+
+function renderEliteMessageHtml(array $report) {
     $esc = function ($value) {
         return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
     };
-    $section = function ($title, $emptyText, $headers, $bodyRows) use ($esc) {
-        $html = '<section class="section"><h2>' . $esc($title) . '</h2>';
-        if (empty($bodyRows)) {
-            return $html . '<p class="empty">' . $esc($emptyText) . '</p></section>';
-        }
-        $html .= '<table><thead><tr>';
-        foreach ($headers as $header) {
-            $html .= '<th>' . $esc($header) . '</th>';
-        }
-        $html .= '</tr></thead><tbody>';
-        foreach ($bodyRows as $row) {
-            $html .= '<tr>';
-            foreach ($row as $cell) {
-                $html .= '<td>' . $esc($cell) . '</td>';
-            }
-            $html .= '</tr>';
-        }
-        return $html . '</tbody></table></section>';
-    };
+    $name = (string) $report['company']['company_name'];
+    $html = '<article class="elite-message">';
+    $html .= '<h2>' . $esc($name) . '</h2>';
+    $html .= '<p>Dear Valued Elite,</p>';
+    $html .= '<p>This is an official compliance update from Corporate-setup.app, your digital compliance management platform powered by Corporate Setup.</p>';
+    $html .= '<p>Kindly review your company status below:</p>';
+    $html .= '<p><strong>Company:</strong> ' . $esc($name) . '</p>';
 
-    $registrationRows = [];
-    foreach ($report['registrations'] as $row) {
-        $registrationRows[] = [$row['registration_type'], $row['status'], $row['submission_date'] ?: '-', $row['expiry_date'] ?: '-'];
-    }
-    $communicationRows = [];
-    foreach ($report['communications'] as $row) {
-        $communicationRows[] = [$row['communication_date'], $row['communication_type'], $row['subject'] ?: '-', $row['summary']];
-    }
-    $taskRows = [];
-    foreach ($report['tasks'] as $row) {
-        $taskRows[] = [$row['title'], $row['status'], $row['priority'], $row['due_date'] ?: '-'];
-    }
-    $documentRows = [];
-    foreach ($report['documents'] as $row) {
-        $documentRows[] = [$row['document_name'], $row['document_type'], $row['external_url'] ?: ($row['file_name'] ?: 'File'), $row['expiry_date'] ?: '-'];
-    }
-    $eliteRows = [];
-    if (!empty($report['elite'])) {
-        $elite = $report['elite'];
-        $eliteRows[] = [$elite['membership_tier'], $elite['status'], $elite['membership_start_date'], $elite['membership_end_date'] ?: '-'];
+    if (empty($report['registrations'])) {
+        $html .= '<p>No registrations to report.</p>';
+    } else {
+        foreach ($report['registrations'] as $row) {
+            $html .= '<p><strong>' . $esc($row['registration_type']) . ':</strong> ' . $esc(clientReportStatusPhrase($row)) . '</p>';
+        }
     }
 
-    $address = trim(implode(', ', array_filter([$company['address'] ?? '', $company['city'] ?? '', $company['state'] ?? ''])));
+    $html .= '<p><strong>Login Details:</strong><br><strong>Link:</strong> <a href="https://www.corporate-setup.app/login">https://www.corporate-setup.app/login</a></p>';
+    $html .= '<p>For more information about our services, please visit: corporate-setup.app</p>';
+    $html .= '<p>Contact us at: <a href="mailto:compliance@corporate-setup.com">compliance@corporate-setup.com</a> or +234 702 560 0065</p>';
+    $html .= '<p>Kind regards,<br><strong>Corporate Setup Team</strong></p>';
+    $html .= '</article>';
 
-    $html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>' . $esc($report['reference'] ?: 'Client Report') . '</title>';
+    return $html;
+}
+
+function renderEliteMessagesHtml(array $reports) {
+    $html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Elite Monthly Messages</title>';
     $html .= '<style>
-        body { font-family: Arial, sans-serif; color: #0f2942; margin: 32px; }
-        h1 { margin: 0 0 4px; font-size: 24px; }
-        h2 { font-size: 16px; border-bottom: 2px solid #0f2942; padding-bottom: 4px; }
-        .meta { color: #445; margin-bottom: 8px; }
-        .section { margin-top: 28px; page-break-inside: avoid; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #d5dde6; padding: 6px 8px; text-align: left; vertical-align: top; }
-        th { background: #0f2942; color: #fff; }
-        .empty { color: #667; }
+        body { font-family: Georgia, serif; color: #1a1a1a; margin: 36px; line-height: 1.5; }
+        h1 { font-size: 28px; margin-bottom: 28px; }
+        h2 { font-size: 22px; margin-bottom: 8px; }
+        article { page-break-inside: avoid; margin-bottom: 12px; }
+        .divider { border: 0; border-top: 1px solid #333; margin: 28px 0; }
+        a { color: #0f2942; }
         @media print { body { margin: 12mm; } }
     </style></head><body>';
-    $html .= '<header><h1>Corporate Setup Limited</h1><p class="meta">Client Report</p>';
-    $html .= '<p class="meta"><strong>' . $esc($company['company_name']) . '</strong><br>';
-    $html .= 'Period: ' . $esc($report['from']) . ' to ' . $esc($report['to']) . '<br>';
-    $html .= 'Reference: ' . $esc($report['reference'] ?: 'Preview') . '</p></header>';
-    $html .= '<section class="section"><h2>Company profile</h2><table><tbody>';
-    $profile = [
-        'Status' => $company['status'],
-        'RC number' => $company['rc_number'] ?: '-',
-        'Industry' => $company['industry_name'] ?: '-',
-        'Subscription' => $company['subscription_status'],
-        'Email' => $company['email'] ?: '-',
-        'Phone' => $company['phone'] ?: '-',
-        'Address' => $address !== '' ? $address : '-',
-        'Client since' => $company['client_since'] ?: '-',
-        'Assigned staff' => $company['assigned_staff'] ?: '-',
-    ];
-    foreach ($profile as $label => $value) {
-        $html .= '<tr><th>' . $esc($label) . '</th><td>' . $esc($value) . '</td></tr>';
+    $html .= '<h1>Elite Monthly Messages</h1>';
+    foreach ($reports as $index => $report) {
+        if ($index > 0) {
+            $html .= '<hr class="divider">';
+        }
+        $html .= renderEliteMessageHtml($report);
     }
-    $html .= '</tbody></table></section>';
-    $html .= $section('Registrations', 'No registrations in this period.', ['Type', 'Status', 'Submitted', 'Expiry'], $registrationRows);
-    $html .= $section('Communications', 'No communications in this period.', ['Date', 'Type', 'Subject', 'Summary'], $communicationRows);
-    $html .= $section('Tasks', 'No tasks in this period.', ['Task', 'Status', 'Priority', 'Due'], $taskRows);
-    $html .= $section('Active documents', 'No active documents.', ['Name', 'Type', 'File or link', 'Expiry'], $documentRows);
-    $html .= $section('Elite membership', 'No elite membership.', ['Tier', 'Status', 'Start', 'End'], $eliteRows);
     $html .= '</body></html>';
+
     return $html;
+}
+
+function renderClientReportHtml(array $report) {
+    return renderEliteMessagesHtml([$report]);
 }

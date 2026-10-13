@@ -32,22 +32,52 @@ $from = $_GET['from'] ?? date('Y-m-01');
 $to = $_GET['to'] ?? date('Y-m-d');
 $search = trim((string) ($_GET['q'] ?? ''));
 
-if ($action === 'download') {
-    $format = $_GET['format'] ?? 'html';
-    $report = buildClientReport($db, $companyId, $from, $to, $user['id'] ?? null, true);
-    if (empty($report['ok'])) {
-        flashMessage('warning', $report['error'] ?? 'Unable to build the client report.');
-        redirect('client-reports.php');
+if ($action === 'download' || $action === 'extract') {
+    $format = $_GET['format'] ?? ($action === 'extract' ? 'txt' : 'html');
+    $reports = [];
+
+    if ($action === 'extract') {
+        $eliteCompanies = $db->fetchAll(
+            "SELECT DISTINCT em.company_id
+             FROM elite_members em
+             WHERE em.status = 'active'
+             ORDER BY em.company_id"
+        );
+        foreach ($eliteCompanies as $eliteCompany) {
+            $built = buildClientReport($db, $eliteCompany['company_id'], $from, $to, $user['id'] ?? null, true);
+            if (!empty($built['ok'])) {
+                $reports[] = $built;
+            }
+        }
+        if (!$reports) {
+            flashMessage('warning', 'No active elite memberships to extract.');
+            redirect('client-reports.php');
+        }
+    } else {
+        $report = buildClientReport($db, $companyId, $from, $to, $user['id'] ?? null, true);
+        if (empty($report['ok'])) {
+            flashMessage('warning', $report['error'] ?? 'Unable to build the client report.');
+            redirect('client-reports.php');
+        }
+        $reports[] = $report;
     }
 
     if ($format === 'csv') {
-        exportToCSV(clientReportCsvRows($report), $report['reference']);
+        exportToCSV(clientReportCsvRows($reports[0]), $reports[0]['reference'] ?: 'elite-messages');
     }
 
-    $filename = $report['reference'] . '.html';
+    if ($format === 'txt') {
+        $filename = ($action === 'extract' ? 'Elite-Monthly-Messages-' . date('Ymd') : ($reports[0]['reference'] ?: 'client-report')) . '.txt';
+        header('Content-Type: text/plain; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        echo renderEliteMessagesText($reports);
+        exit;
+    }
+
+    $filename = ($action === 'extract' ? 'Elite-Monthly-Messages-' . date('Ymd') : ($reports[0]['reference'] ?: 'client-report')) . '.html';
     header('Content-Type: text/html; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
-    echo renderClientReportHtml($report);
+    echo renderEliteMessagesHtml($reports);
     exit;
 }
 

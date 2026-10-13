@@ -21,6 +21,9 @@ $statusOptions = ['pending', 'awaiting_documents', 'submitted', 'processing', 'a
     <form id="regForm" method="POST">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save">
+        <?php if ($action === 'edit' && !empty($registration['id'])): ?>
+            <input type="hidden" name="id" value="<?= (int) $registration['id'] ?>">
+        <?php endif; ?>
 
         <div class="grid grid-2 gap-4">
             <div class="card">

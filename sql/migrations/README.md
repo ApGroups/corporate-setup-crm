@@ -36,13 +36,15 @@ C:\xampp\mysql\bin\mysql.exe -u DB_USER -p DB_NAME < sql\migrations\003_monthly_
 
 Or via phpMyAdmin: Import → select `003_monthly_report_breakdowns.sql`.
 
+`003` does not use `ADD COLUMN IF NOT EXISTS`. That syntax is rejected by MySQL. Re-importing it is safe when the columns are already present.
+
 ## Apply 004_integrity_reports_documents.sql
 
 ```bat
 C:\xampp\mysql\bin\mysql.exe -u DB_USER -p DB_NAME < sql\migrations\004_integrity_reports_documents.sql
 ```
 
-If this fails on a unique index, run `php scripts/dedupe-report.php` first. Do not drop rows to force the index.
+If the result grid lists companies that share an RC number, the unique index is skipped and those rows are left unchanged. Clear or correct the extra RC number, then import this file again. `php scripts/dedupe-report.php` lists the same collisions. Do not drop rows to force the index.
 
 Or via phpMyAdmin: Import → select `004_integrity_reports_documents.sql`.
 

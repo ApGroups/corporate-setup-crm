@@ -426,7 +426,12 @@ $scoped = !empty($reportForB['ok']) && !empty($reportForA['ok'])
     && count($reportForB['registrations']) === 0
     && count($reportForA['registrations']) === 1
     && (int) $reportForA['registrations'][0]['id'] > 0;
-assert_true('Client report query is scoped to one company', $scoped);
+$letter = !empty($reportForA['ok']) ? renderEliteMessageText($reportForA) : '';
+$scopedLetter = $scoped
+    && strpos($letter, 'Dear Valued Elite,') !== false
+    && strpos($letter, $reportForA['company']['company_name']) !== false
+    && strpos($letter, $reportForB['company']['company_name']) === false;
+assert_true('Client report query is scoped to one company', $scopedLetter);
 $db->delete('registrations', 'company_id = :id', ['id' => $reportCompanyA]);
 $db->delete('companies', 'id = :id', ['id' => $reportCompanyA]);
 $db->delete('companies', 'id = :id', ['id' => $reportCompanyB]);

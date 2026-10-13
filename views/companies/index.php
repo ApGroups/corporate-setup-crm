@@ -30,6 +30,9 @@ $canManageContacts = checkPermission('manage_contacts') || $canManageCompanies;
     <form id="companyForm" method="POST">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save">
+        <?php if ($action === 'edit' && !empty($company['id'])): ?>
+            <input type="hidden" name="id" value="<?= (int) $company['id'] ?>">
+        <?php endif; ?>
 
         <div class="grid grid-2 gap-4">
             <!-- Company Information -->
