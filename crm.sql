@@ -41,6 +41,15 @@ CREATE TABLE IF NOT EXISTS `users` (
     `email` VARCHAR(100) NOT NULL UNIQUE,
     `password` VARCHAR(255) NOT NULL,
     `phone` VARCHAR(20),
+    `residential_address` TEXT NULL,
+    `street` VARCHAR(120) NULL,
+    `address_city` VARCHAR(100) NULL,
+    `address_state` VARCHAR(100) NULL,
+    `postal_code` VARCHAR(20) NULL,
+    `address_country` VARCHAR(100) NULL,
+    `mailing_address` TEXT NULL,
+    `mailing_same` TINYINT(1) NOT NULL DEFAULT 0,
+    `alternative_address` TEXT NULL,
     `avatar` VARCHAR(255),
     `role_id` INT NOT NULL,
     `department_id` INT,
@@ -781,13 +790,56 @@ CREATE TABLE IF NOT EXISTS `client_reports` (
     `period_start` DATE NOT NULL,
     `period_end` DATE NOT NULL,
     `status` ENUM('generated', 'failed') DEFAULT 'generated',
+    `message_body` TEXT NULL,
+    `invoice_document_id` INT NULL,
     `generated_by` INT NULL,
     `generated_at` DATETIME NOT NULL,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY `uq_client_report_ref` (`report_reference`),
     FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE CASCADE,
     FOREIGN KEY (`generated_by`) REFERENCES `users`(`id`) ON DELETE SET NULL,
+    FOREIGN KEY (`invoice_document_id`) REFERENCES `documents`(`id`) ON DELETE SET NULL,
     INDEX `idx_client_reports_company` (`company_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table: staff_next_of_kin
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `staff_next_of_kin` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` INT NOT NULL,
+    `full_name` VARCHAR(150) NOT NULL,
+    `relationship` VARCHAR(80) NULL,
+    `phone` VARCHAR(40) NULL,
+    `alt_phone` VARCHAR(40) NULL,
+    `email` VARCHAR(150) NULL,
+    `address` TEXT NULL,
+    `city` VARCHAR(100) NULL,
+    `state` VARCHAR(100) NULL,
+    `country` VARCHAR(100) NULL,
+    `notes` TEXT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+    INDEX `idx_kin_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table: staff_emergency_contacts
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `staff_emergency_contacts` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` INT NOT NULL,
+    `full_name` VARCHAR(150) NOT NULL,
+    `relationship` VARCHAR(80) NULL,
+    `phone` VARCHAR(40) NULL,
+    `alt_phone` VARCHAR(40) NULL,
+    `email` VARCHAR(150) NULL,
+    `address` TEXT NULL,
+    `preferred_method` VARCHAR(40) NULL,
+    `sort_order` INT NOT NULL DEFAULT 1,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+    INDEX `idx_emergency_user` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

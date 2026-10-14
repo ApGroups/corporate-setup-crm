@@ -432,6 +432,36 @@ $scopedLetter = $scoped
     && strpos($letter, $reportForA['company']['company_name']) !== false
     && strpos($letter, $reportForB['company']['company_name']) === false;
 assert_true('Client report query is scoped to one company', $scopedLetter);
+$registrationId = (int) $reportForA['registrations'][0]['id'];
+$statusBefore = $db->fetch('SELECT status FROM registrations WHERE id = ?', [$registrationId]);
+$editedReport = buildClientReport($db, $reportCompanyA, $periodFrom, $periodTo, 1, true, [
+    'lines' => [$registrationId => 'Returned due to compliance updates'],
+    'note' => 'Bring the VAT letter',
+]);
+$statusAfter = $db->fetch('SELECT status FROM registrations WHERE id = ?', [$registrationId]);
+$editedLetter = !empty($editedReport['ok']) ? renderEliteMessageText($editedReport) : '';
+$savedBody = $db->fetch('SELECT message_body FROM client_reports WHERE report_reference = ?', [$editedReport['reference'] ?? '']);
+assert_true(
+    'Message wording does not change registration status',
+    ($statusBefore['status'] ?? '') === ($statusAfter['status'] ?? '')
+    && strpos($editedLetter, 'Returned due to compliance updates') !== false
+    && strpos((string) ($savedBody['message_body'] ?? ''), 'Bring the VAT letter') !== false
+);
+if (!empty($editedReport['reference'])) {
+    $db->delete('client_reports', 'report_reference = :reference', ['reference' => $editedReport['reference']]);
+}
+$addressColumn = $db->fetch("SELECT residential_address FROM users WHERE id = 1");
+assert_true('Existing staff loads with empty address fields', array_key_exists('residential_address', $addressColumn) && ($addressColumn['residential_address'] === null || $addressColumn['residential_address'] === ''));
+$kinId = (int) $db->insert('staff_next_of_kin', [
+    'user_id' => 1,
+    'full_name' => 'E2E Next of Kin',
+    'relationship' => 'Sibling',
+    'phone' => '+2347000000000',
+]);
+$kinForOther = $db->fetch("SELECT id FROM staff_next_of_kin WHERE user_id = 4 AND full_name = 'E2E Next of Kin'");
+$kinForOwner = $db->fetch('SELECT id FROM staff_next_of_kin WHERE id = ? AND user_id = 1', [$kinId]);
+assert_true('Next of kin stays on the selected staff member', !empty($kinForOwner) && empty($kinForOther));
+$db->delete('staff_next_of_kin', 'id = :id', ['id' => $kinId]);
 $db->delete('registrations', 'company_id = :id', ['id' => $reportCompanyA]);
 $db->delete('companies', 'id = :id', ['id' => $reportCompanyA]);
 $db->delete('companies', 'id = :id', ['id' => $reportCompanyB]);

@@ -47,36 +47,154 @@
 <?php endif; ?>
 
 <?php if ($report): ?>
-    <div class="card mb-6">
-        <div class="card-header">
-            <h3 class="card-title"><?= sanitize($report['company']['company_name']) ?></h3>
-            <div class="btn-group">
-                <button type="button" class="btn btn-outline" onclick="window.print()"><i class="fas fa-print"></i> Print</button>
-                <a class="btn btn-outline" href="client-reports.php?action=download&amp;format=txt&amp;company_id=<?= (int) $report['company']['id'] ?>&amp;from=<?= urlencode($report['from']) ?>&amp;to=<?= urlencode($report['to']) ?>">Extract text</a>
-                <a class="btn btn-outline" href="client-reports.php?action=download&amp;format=html&amp;company_id=<?= (int) $report['company']['id'] ?>&amp;from=<?= urlencode($report['from']) ?>&amp;to=<?= urlencode($report['to']) ?>">Download HTML</a>
-                <a class="btn btn-outline" href="client-reports.php?action=download&amp;format=csv&amp;company_id=<?= (int) $report['company']['id'] ?>&amp;from=<?= urlencode($report['from']) ?>&amp;to=<?= urlencode($report['to']) ?>">Download CSV</a>
+    <form id="messageForm" method="POST" data-no-ajax class="mb-6">
+        <?= csrf_field() ?>
+        <input type="hidden" name="company_id" value="<?= (int) $report['company']['id'] ?>">
+        <input type="hidden" name="from" value="<?= sanitize($report['from']) ?>">
+        <input type="hidden" name="to" value="<?= sanitize($report['to']) ?>">
+
+        <div class="grid grid-2 gap-4">
+            <div class="card">
+                <div class="card-header"><h3 class="card-title">Message wording</h3></div>
+                <div class="card-body">
+                    <p class="text-muted">These edits apply to this letter only. Saved registration statuses stay unchanged.</p>
+                    <?php if (empty($report['registrations'])): ?>
+                        <p>No registrations to report.</p>
+                    <?php else: ?>
+                        <?php foreach ($report['registrations'] as $row): ?>
+                            <div class="form-group">
+                                <label class="form-label" for="line-<?= (int) $row['id'] ?>"><?= sanitize($row['registration_type']) ?></label>
+                                <input type="text" class="form-control letter-input" id="line-<?= (int) $row['id'] ?>" name="lines[<?= (int) $row['id'] ?>]" value="<?= sanitize($row['generated_phrase']) ?>" data-generated="<?= sanitize($row['generated_phrase']) ?>" data-line-id="<?= (int) $row['id'] ?>">
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                    <div class="form-group">
+                        <label class="form-label" for="note">Optional note</label>
+                        <textarea id="note" name="note" class="form-control" rows="3" placeholder="Extra wording for this message only"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="invoice_document_id">Invoice picture</label>
+                        <select id="invoice_document_id" name="invoice_document_id" class="form-control">
+                            <option value="">No invoice</option>
+                            <?php foreach ($report['invoices'] as $invoice): ?>
+                                <option value="<?= (int) $invoice['id'] ?>" data-image="<?= isInvoiceImage($invoice) ? 'uploads/' . sanitize($invoice['file_path']) : '' ?>" data-link="<?= sanitize($invoice['external_url'] ?: ($invoice['file_path'] ? 'uploads/' . $invoice['file_path'] : '')) ?>" data-name="<?= sanitize($invoice['document_name']) ?>">
+                                    <?= sanitize($invoice['document_name']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php if (empty($report['invoices'])): ?>
+                            <small class="text-muted">This company has no saved invoice document.</small>
+                        <?php endif; ?>
+                    </div>
+                    <div class="btn-group">
+                        <button type="submit" name="action" value="save_message" class="btn btn-primary">Save message</button>
+                        <button type="button" id="copyLetter" class="btn btn-outline">Copy</button>
+                        <button type="button" id="restoreLetter" class="btn btn-outline">Restore generated wording</button>
+                        <button type="submit" name="action" value="download" class="btn btn-outline" onclick="document.getElementById('downloadFormat').value='txt'">Extract text</button>
+                        <button type="submit" name="action" value="download" class="btn btn-outline" onclick="document.getElementById('downloadFormat').value='html'">Download HTML</button>
+                        <button type="submit" name="action" value="download" class="btn btn-outline" onclick="document.getElementById('downloadFormat').value='csv'">Download CSV</button>
+                        <button type="button" class="btn btn-outline" onclick="window.print()">Print</button>
+                    </div>
+                    <input type="hidden" name="format" id="downloadFormat" value="html">
+                </div>
+            </div>
+
+            <div class="card message-sheet" id="letterPreview">
+                <div class="message-sheet-header">
+                    <img src="assets/images/cslogo.png" alt="Corporate Setup">
+                    <div>
+                        <h3>Elite Monthly Messages</h3>
+                        <p>Corporate Setup</p>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <h2><?= sanitize($report['company']['company_name']) ?></h2>
+                    <p>Dear Valued Elite,</p>
+                    <p>This is an official compliance update from Corporate-setup.app, your digital compliance management platform powered by Corporate Setup.</p>
+                    <p>Kindly review your company status below:</p>
+                    <p><strong>Company:</strong> <?= sanitize($report['company']['company_name']) ?></p>
+                    <?php if (empty($report['registrations'])): ?>
+                        <p class="letter-empty">No registrations to report.</p>
+                    <?php else: ?>
+                        <table class="letter-table">
+                            <thead><tr><th>Service</th><th>Status</th></tr></thead>
+                            <tbody>
+                            <?php foreach ($report['registrations'] as $row): ?>
+                                <tr>
+                                    <td class="service"><?= sanitize($row['registration_type']) ?></td>
+                                    <td class="status"><span class="preview-line" data-line-id="<?= (int) $row['id'] ?>"><?= sanitize($row['generated_phrase']) ?></span></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php endif; ?>
+                    <p id="previewNote" hidden><strong>Note:</strong> <span></span></p>
+                    <p id="previewInvoice" hidden></p>
+                    <p><strong>Login Details:</strong><br><strong>Link:</strong> <a href="https://www.corporate-setup.app/login">https://www.corporate-setup.app/login</a></p>
+                    <p>For more information about our services, please visit: corporate-setup.app</p>
+                    <p>Contact us at: <a href="mailto:compliance@corporate-setup.com">compliance@corporate-setup.com</a> or +234 702 560 0065</p>
+                    <p>Kind regards,<br><strong>Corporate Setup Team</strong></p>
+                </div>
             </div>
         </div>
-        <div class="card-body elite-message">
-            <p class="text-muted">Reference <?= sanitize($report['reference']) ?>.</p>
-            <h2><?= sanitize($report['company']['company_name']) ?></h2>
-            <p>Dear Valued Elite,</p>
-            <p>This is an official compliance update from Corporate-setup.app, your digital compliance management platform powered by Corporate Setup.</p>
-            <p>Kindly review your company status below:</p>
-            <p><strong>Company:</strong> <?= sanitize($report['company']['company_name']) ?></p>
-            <?php if (empty($report['registrations'])): ?>
-                <p>No registrations to report.</p>
-            <?php else: ?>
-                <?php foreach ($report['registrations'] as $row): ?>
-                    <p><strong><?= sanitize($row['registration_type']) ?>:</strong> <?= sanitize(clientReportStatusPhrase($row)) ?></p>
-                <?php endforeach; ?>
-            <?php endif; ?>
-            <p><strong>Login Details:</strong><br><strong>Link:</strong> <a href="https://www.corporate-setup.app/login">https://www.corporate-setup.app/login</a></p>
-            <p>For more information about our services, please visit: corporate-setup.app</p>
-            <p>Contact us at: <a href="mailto:compliance@corporate-setup.com">compliance@corporate-setup.com</a> or +234 702 560 0065</p>
-            <p>Kind regards,<br><strong>Corporate Setup Team</strong></p>
-        </div>
-    </div>
+    </form>
+    <script>
+        (function () {
+            var preview = document.getElementById('letterPreview');
+            var note = document.getElementById('note');
+            var noteRow = document.getElementById('previewNote');
+            var invoiceSelect = document.getElementById('invoice_document_id');
+            var invoiceRow = document.getElementById('previewInvoice');
+
+            function syncLines() {
+                document.querySelectorAll('.letter-input').forEach(function (input) {
+                    var target = preview.querySelector('.preview-line[data-line-id="' + input.getAttribute('data-line-id') + '"]');
+                    if (target) {
+                        target.textContent = input.value;
+                    }
+                });
+                var noteText = note.value.trim();
+                noteRow.hidden = noteText === '';
+                noteRow.querySelector('span').textContent = noteText;
+                var option = invoiceSelect.options[invoiceSelect.selectedIndex];
+                var image = option ? option.getAttribute('data-image') : '';
+                var link = option ? option.getAttribute('data-link') : '';
+                var name = option ? option.getAttribute('data-name') : '';
+                invoiceRow.innerHTML = '';
+                invoiceRow.hidden = !invoiceSelect.value;
+                if (image) {
+                    var img = document.createElement('img');
+                    img.src = image;
+                    img.alt = name || 'Invoice';
+                    invoiceRow.appendChild(img);
+                } else if (link) {
+                    var anchor = document.createElement('a');
+                    anchor.href = link;
+                    anchor.target = '_blank';
+                    anchor.rel = 'noopener noreferrer';
+                    anchor.textContent = name || 'Invoice';
+                    invoiceRow.appendChild(anchor);
+                }
+            }
+
+            document.getElementById('messageForm').addEventListener('input', syncLines);
+            invoiceSelect.addEventListener('change', syncLines);
+            document.getElementById('restoreLetter').addEventListener('click', function () {
+                document.querySelectorAll('.letter-input').forEach(function (input) {
+                    input.value = input.getAttribute('data-generated') || '';
+                });
+                note.value = '';
+                invoiceSelect.value = '';
+                syncLines();
+            });
+            document.getElementById('copyLetter').addEventListener('click', function () {
+                var text = preview.innerText;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text);
+                }
+            });
+        })();
+    </script>
 <?php endif; ?>
 
 <div class="card">

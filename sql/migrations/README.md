@@ -55,5 +55,14 @@ Or via phpMyAdmin: Import → select `004_integrity_reports_documents.sql`.
 - `email_logs` (mail delivery handoff/failure visibility for CRM notifications)
 - `monthly_reports.weekly_breakdown` and `monthly_reports.project_breakdown` (JSON week/project aggregation)
 - Unique `companies.rc_number`, unique elite start date per company, document `external_url`, and `client_reports` history
+- Staff address columns, `staff_next_of_kin`, `staff_emergency_contacts`, and saved client-message text
+
+## Apply 005_staff_profile_client_message.sql
+
+```bat
+C:\xampp\mysql\bin\mysql.exe -u DB_USER -p DB_NAME < sql\migrations\005_staff_profile_client_message.sql
+```
+
+Or via phpMyAdmin: Import → select `005_staff_profile_client_message.sql`. Re-importing it is safe.
 
 Does **not** drop `daily_reports.tomorrow_plan` (column left for historical data; app no longer uses it).

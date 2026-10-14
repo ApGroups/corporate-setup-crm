@@ -34,6 +34,102 @@ $db = Database::getInstance();
 $user = getCurrentUser();
 $auth = new Auth();
 
+function staffOptionalText($value) {
+    $value = trim((string) $value);
+    return $value === '' ? null : sanitize($value);
+}
+
+function staffContactEmail($value) {
+    $value = strtolower(trim((string) $value));
+    if ($value === '') {
+        return null;
+    }
+    return filter_var($value, FILTER_VALIDATE_EMAIL) ? $value : false;
+}
+
+function staffContactRowsValid(array $source, $prefix) {
+    $emails = $source[$prefix . '_email'] ?? [];
+    if (!is_array($emails)) {
+        return null;
+    }
+    foreach ($emails as $email) {
+        if (staffContactEmail($email) === false) {
+            return 'Enter a valid email or leave it blank.';
+        }
+    }
+    return null;
+}
+
+function saveStaffContactRows(Database $db, $userId, $prefix, $table) {
+    $ids = $_POST[$prefix . '_id'] ?? [];
+    $names = $_POST[$prefix . '_name'] ?? [];
+    $relationships = $_POST[$prefix . '_relationship'] ?? [];
+    $phones = $_POST[$prefix . '_phone'] ?? [];
+    $altPhones = $_POST[$prefix . '_alt_phone'] ?? [];
+    $emails = $_POST[$prefix . '_email'] ?? [];
+    $addresses = $_POST[$prefix . '_address'] ?? [];
+    $cities = $_POST[$prefix . '_city'] ?? [];
+    $states = $_POST[$prefix . '_state'] ?? [];
+    $countries = $_POST[$prefix . '_country'] ?? [];
+    $notes = $_POST[$prefix . '_notes'] ?? [];
+    $methods = $_POST[$prefix . '_method'] ?? [];
+    $orders = $_POST[$prefix . '_order'] ?? [];
+    $removals = $_POST[$prefix . '_remove'] ?? [];
+    if (!is_array($ids)) {
+        return;
+    }
+
+    foreach ($ids as $index => $rawId) {
+        $rowId = (int) $rawId;
+        $removed = is_array($removals) && !empty($removals[$index]);
+        if ($removed && $rowId > 0) {
+            $db->delete($table, 'id = :id AND user_id = :user_id', ['id' => $rowId, 'user_id' => $userId]);
+            continue;
+        }
+
+        $name = staffOptionalText($names[$index] ?? '');
+        if ($name === null) {
+            continue;
+        }
+
+        $data = [
+            'full_name' => $name,
+            'relationship' => staffOptionalText($relationships[$index] ?? ''),
+            'phone' => staffOptionalText($phones[$index] ?? ''),
+            'alt_phone' => staffOptionalText($altPhones[$index] ?? ''),
+            'email' => staffContactEmail($emails[$index] ?? ''),
+            'address' => staffOptionalText($addresses[$index] ?? ''),
+        ];
+        if ($prefix === 'kin') {
+            $data['city'] = staffOptionalText($cities[$index] ?? '');
+            $data['state'] = staffOptionalText($states[$index] ?? '');
+            $data['country'] = staffOptionalText($countries[$index] ?? '');
+            $data['notes'] = staffOptionalText($notes[$index] ?? '');
+        } else {
+            $data['preferred_method'] = staffOptionalText($methods[$index] ?? '');
+            $data['sort_order'] = max(1, (int) ($orders[$index] ?? 1));
+        }
+
+        if ($rowId > 0) {
+            $db->update($table, $data, 'id = :id AND user_id = :user_id', ['id' => $rowId, 'user_id' => $userId]);
+        } else {
+            $data['user_id'] = $userId;
+            $db->insert($table, $data);
+        }
+    }
+}
+
+function staffProfileSections(array $staffMember, $kinCount, $emergencyCount) {
+    $sections = [
+        'Personal details' => trim((string) ($staffMember['name'] ?? '')) !== '' && trim((string) ($staffMember['email'] ?? '')) !== '',
+        'Address' => trim((string) ($staffMember['residential_address'] ?? '')) !== '' || trim((string) ($staffMember['address_city'] ?? '')) !== '',
+        'Next of kin' => $kinCount > 0,
+        'Emergency contact' => $emergencyCount > 0,
+    ];
+    $done = count(array_filter($sections));
+    return ['sections' => $sections, 'done' => $done, 'total' => count($sections)];
+}
+
 $action = $_POST['action'] ?? $_GET['action'] ?? 'list';
 $tab = $_GET['tab'] ?? 'list';
 $id = intval($_POST['id'] ?? $_GET['id'] ?? 0);
@@ -114,12 +210,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
+            $contactError = staffContactRowsValid($_POST, 'kin') ?: staffContactRowsValid($_POST, 'emergency');
+            if ($contactError) {
+                echo json_encode(['success' => false, 'error' => $contactError]);
+                exit;
+            }
+
+            $mailingSame = isset($_POST['mailing_same']) ? 1 : 0;
+            $residentialAddress = staffOptionalText($_POST['residential_address'] ?? '');
             try {
                 $staffData = [
                     'employee_id' => $employeeId !== '' ? $employeeId : null,
                     'name' => $name,
                     'email' => $email,
                     'phone' => $phone,
+                    'residential_address' => $residentialAddress,
+                    'street' => staffOptionalText($_POST['street'] ?? ''),
+                    'address_city' => staffOptionalText($_POST['address_city'] ?? ''),
+                    'address_state' => staffOptionalText($_POST['address_state'] ?? ''),
+                    'postal_code' => staffOptionalText($_POST['postal_code'] ?? ''),
+                    'address_country' => staffOptionalText($_POST['address_country'] ?? ''),
+                    'mailing_address' => $mailingSame ? $residentialAddress : staffOptionalText($_POST['mailing_address'] ?? ''),
+                    'mailing_same' => $mailingSame,
+                    'alternative_address' => staffOptionalText($_POST['alternative_address'] ?? ''),
                     'role_id' => $roleId,
                     'department_id' => $departmentId,
                     'position' => $position,
@@ -141,6 +254,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     $db->update('users', $staffData, 'id = :id', ['id' => $id]);
+                    saveStaffContactRows($db, $id, 'kin', 'staff_next_of_kin');
+                    saveStaffContactRows($db, $id, 'emergency', 'staff_emergency_contacts');
                     logActivity($user['id'], 'update', 'Updated staff account: ' . $name, 'users', $id);
 
                     $newRole = $db->fetch("SELECT display_name FROM roles WHERE id = ?", [$roleId]);
@@ -202,6 +317,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $staffData['created_at'] = date('Y-m-d H:i:s');
 
                     $newId = $db->insert('users', $staffData);
+                    saveStaffContactRows($db, (int) $newId, 'kin', 'staff_next_of_kin');
+                    saveStaffContactRows($db, (int) $newId, 'emergency', 'staff_emergency_contacts');
                     logActivity($user['id'], 'create', 'Created staff account: ' . $name, 'users', $newId);
 
                     $newRole = $db->fetch("SELECT display_name FROM roles WHERE id = ?", [$roleId]);
@@ -445,6 +562,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $staffMember = null;
+$nextOfKin = [];
+$emergencyContacts = [];
+$profileCompletion = null;
 if ($id > 0) {
     $staffMember = $db->fetch(
         "SELECT u.*, r.display_name as role_name, d.name as department_name
@@ -454,6 +574,11 @@ if ($id > 0) {
          WHERE u.id = ?",
         [$id]
     );
+    if ($staffMember) {
+        $nextOfKin = $db->fetchAll("SELECT * FROM staff_next_of_kin WHERE user_id = ? ORDER BY id", [$staffMember['id']]);
+        $emergencyContacts = $db->fetchAll("SELECT * FROM staff_emergency_contacts WHERE user_id = ? ORDER BY sort_order, id", [$staffMember['id']]);
+        $profileCompletion = staffProfileSections($staffMember, count($nextOfKin), count($emergencyContacts));
+    }
 }
 
 // Get staff

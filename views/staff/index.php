@@ -100,6 +100,188 @@
                 </div>
             </div>
         </div>
+
+        <?php if ($profileCompletion): ?>
+            <p class="profile-meter">Profile sections complete: <?= (int) $profileCompletion['done'] ?> of <?= (int) $profileCompletion['total'] ?>. Optional sections do not block saving.</p>
+        <?php endif; ?>
+
+        <details class="card staff-panel" open>
+            <summary class="card-header">Address</summary>
+            <div class="card-body">
+                <div class="form-group">
+                    <label class="form-label" for="residential_address">Residential address</label>
+                    <textarea id="residential_address" name="residential_address" class="form-control" rows="2"><?= sanitize($staffMember['residential_address'] ?? '') ?></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="street">Street or house number</label>
+                        <input type="text" id="street" name="street" class="form-control" value="<?= sanitize($staffMember['street'] ?? '') ?>">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="address_city">City or town</label>
+                        <input type="text" id="address_city" name="address_city" class="form-control" value="<?= sanitize($staffMember['address_city'] ?? '') ?>">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="address_state">State</label>
+                        <input type="text" id="address_state" name="address_state" class="form-control" value="<?= sanitize($staffMember['address_state'] ?? '') ?>">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="postal_code">Postal code</label>
+                        <input type="text" id="postal_code" name="postal_code" class="form-control" value="<?= sanitize($staffMember['postal_code'] ?? '') ?>">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="address_country">Country</label>
+                        <input type="text" id="address_country" name="address_country" class="form-control" value="<?= sanitize($staffMember['address_country'] ?? '') ?>">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-check">
+                        <input type="checkbox" name="mailing_same" <?= !empty($staffMember['mailing_same']) ? 'checked' : '' ?>>
+                        <span>Mailing address is the same as the residential address</span>
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="mailing_address">Mailing address</label>
+                    <textarea id="mailing_address" name="mailing_address" class="form-control" rows="2"><?= sanitize($staffMember['mailing_address'] ?? '') ?></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="alternative_address">Alternative contact address</label>
+                    <textarea id="alternative_address" name="alternative_address" class="form-control" rows="2"><?= sanitize($staffMember['alternative_address'] ?? '') ?></textarea>
+                </div>
+            </div>
+        </details>
+
+        <details class="card staff-panel">
+            <summary class="card-header">Next of kin</summary>
+            <div class="card-body">
+                <p class="text-muted">Next of kin is separate from an emergency contact. Leave a new row blank if you are not adding one.</p>
+                <?php
+                $kinRows = $nextOfKin;
+                $kinRows[] = ['id' => 0, 'full_name' => '', 'relationship' => '', 'phone' => '', 'alt_phone' => '', 'email' => '', 'address' => '', 'city' => '', 'state' => '', 'country' => '', 'notes' => ''];
+                foreach ($kinRows as $kinIndex => $kin):
+                ?>
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <input type="hidden" name="kin_id[<?= $kinIndex ?>]" value="<?= (int) ($kin['id'] ?? 0) ?>">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">Full name</label>
+                                    <input type="text" name="kin_name[<?= $kinIndex ?>]" class="form-control" value="<?= sanitize($kin['full_name'] ?? '') ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Relationship</label>
+                                    <input type="text" name="kin_relationship[<?= $kinIndex ?>]" class="form-control" value="<?= sanitize($kin['relationship'] ?? '') ?>">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">Primary phone</label>
+                                    <input type="text" name="kin_phone[<?= $kinIndex ?>]" class="form-control" value="<?= sanitize($kin['phone'] ?? '') ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Alternative phone</label>
+                                    <input type="text" name="kin_alt_phone[<?= $kinIndex ?>]" class="form-control" value="<?= sanitize($kin['alt_phone'] ?? '') ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Email</label>
+                                    <input type="email" name="kin_email[<?= $kinIndex ?>]" class="form-control" value="<?= sanitize($kin['email'] ?? '') ?>">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Residential address</label>
+                                <textarea name="kin_address[<?= $kinIndex ?>]" class="form-control" rows="2"><?= sanitize($kin['address'] ?? '') ?></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">City or town</label>
+                                    <input type="text" name="kin_city[<?= $kinIndex ?>]" class="form-control" value="<?= sanitize($kin['city'] ?? '') ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">State</label>
+                                    <input type="text" name="kin_state[<?= $kinIndex ?>]" class="form-control" value="<?= sanitize($kin['state'] ?? '') ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Country</label>
+                                    <input type="text" name="kin_country[<?= $kinIndex ?>]" class="form-control" value="<?= sanitize($kin['country'] ?? '') ?>">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Notes</label>
+                                <textarea name="kin_notes[<?= $kinIndex ?>]" class="form-control" rows="2"><?= sanitize($kin['notes'] ?? '') ?></textarea>
+                            </div>
+                            <?php if (!empty($kin['id'])): ?>
+                                <label class="form-check">
+                                    <input type="checkbox" name="kin_remove[<?= $kinIndex ?>]" value="1">
+                                    <span>Remove this next of kin</span>
+                                </label>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </details>
+
+        <details class="card staff-panel">
+            <summary class="card-header">Emergency contact</summary>
+            <div class="card-body">
+                <p class="text-muted">An emergency contact can be a different person from the next of kin.</p>
+                <?php
+                $emergencyRows = $emergencyContacts;
+                $emergencyRows[] = ['id' => 0, 'full_name' => '', 'relationship' => '', 'phone' => '', 'alt_phone' => '', 'email' => '', 'address' => '', 'preferred_method' => '', 'sort_order' => count($emergencyContacts) + 1];
+                foreach ($emergencyRows as $emergencyIndex => $emergency):
+                ?>
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <input type="hidden" name="emergency_id[<?= $emergencyIndex ?>]" value="<?= (int) ($emergency['id'] ?? 0) ?>">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">Full name</label>
+                                    <input type="text" name="emergency_name[<?= $emergencyIndex ?>]" class="form-control" value="<?= sanitize($emergency['full_name'] ?? '') ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Relationship</label>
+                                    <input type="text" name="emergency_relationship[<?= $emergencyIndex ?>]" class="form-control" value="<?= sanitize($emergency['relationship'] ?? '') ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Contact order</label>
+                                    <input type="number" min="1" name="emergency_order[<?= $emergencyIndex ?>]" class="form-control" value="<?= (int) ($emergency['sort_order'] ?? 1) ?>">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">Primary phone</label>
+                                    <input type="text" name="emergency_phone[<?= $emergencyIndex ?>]" class="form-control" value="<?= sanitize($emergency['phone'] ?? '') ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Alternative phone</label>
+                                    <input type="text" name="emergency_alt_phone[<?= $emergencyIndex ?>]" class="form-control" value="<?= sanitize($emergency['alt_phone'] ?? '') ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Email</label>
+                                    <input type="email" name="emergency_email[<?= $emergencyIndex ?>]" class="form-control" value="<?= sanitize($emergency['email'] ?? '') ?>">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Residential address</label>
+                                <textarea name="emergency_address[<?= $emergencyIndex ?>]" class="form-control" rows="2"><?= sanitize($emergency['address'] ?? '') ?></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Preferred contact method</label>
+                                <input type="text" name="emergency_method[<?= $emergencyIndex ?>]" class="form-control" value="<?= sanitize($emergency['preferred_method'] ?? '') ?>" placeholder="Phone, email, or either">
+                            </div>
+                            <?php if (!empty($emergency['id'])): ?>
+                                <label class="form-check">
+                                    <input type="checkbox" name="emergency_remove[<?= $emergencyIndex ?>]" value="1">
+                                    <span>Remove this emergency contact</span>
+                                </label>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </details>
     </form>
 
 <?php elseif ($action === 'view' && $staffMember): ?>
@@ -130,7 +312,27 @@
                 <tr><td style="font-weight: 500;">Department</td><td><?= sanitize($staffMember['department_name']) ?: '-' ?></td></tr>
                 <tr><td style="font-weight: 500;">Status</td><td><?= getStatusBadge($staffMember['status']) ?></td></tr>
                 <tr><td style="font-weight: 500;">Last Login</td><td><?= $staffMember['last_login'] ? formatDateTime($staffMember['last_login']) : 'Never' ?></td></tr>
+                <tr><td style="font-weight: 500;">Profile</td><td><?= (int) $profileCompletion['done'] ?> of <?= (int) $profileCompletion['total'] ?> sections complete</td></tr>
+                <tr><td style="font-weight: 500;">Residential address</td><td><?= sanitize($staffMember['residential_address'] ?? '') ?: '-' ?></td></tr>
+                <tr><td style="font-weight: 500;">City</td><td><?= sanitize($staffMember['address_city'] ?? '') ?: '-' ?></td></tr>
+                <tr><td style="font-weight: 500;">Mailing address</td><td><?= sanitize($staffMember['mailing_address'] ?? '') ?: '-' ?></td></tr>
             </table>
+            <h3 class="card-title mt-4">Next of kin</h3>
+            <?php if (empty($nextOfKin)): ?>
+                <p class="text-muted">No next of kin recorded.</p>
+            <?php else: ?>
+                <?php foreach ($nextOfKin as $kin): ?>
+                    <p><strong><?= sanitize($kin['full_name']) ?></strong> <?= sanitize($kin['relationship'] ?? '') ?><br><?= sanitize($kin['phone'] ?? '') ?></p>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            <h3 class="card-title">Emergency contacts</h3>
+            <?php if (empty($emergencyContacts)): ?>
+                <p class="text-muted">No emergency contact recorded.</p>
+            <?php else: ?>
+                <?php foreach ($emergencyContacts as $emergency): ?>
+                    <p><strong><?= sanitize($emergency['full_name']) ?></strong> <?= sanitize($emergency['relationship'] ?? '') ?><br><?= sanitize($emergency['phone'] ?? '') ?></p>
+                <?php endforeach; ?>
+            <?php endif; ?>
         </div>
     </div>
 

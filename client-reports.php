@@ -26,11 +26,51 @@ $activeNav = 'client-reports';
 $db = Database::getInstance();
 $user = getCurrentUser();
 
-$action = $_GET['action'] ?? 'list';
-$companyId = (int) ($_GET['company_id'] ?? 0);
-$from = $_GET['from'] ?? date('Y-m-01');
-$to = $_GET['to'] ?? date('Y-m-d');
+$action = $_POST['action'] ?? $_GET['action'] ?? 'list';
+$companyId = (int) ($_POST['company_id'] ?? $_GET['company_id'] ?? 0);
+$from = $_POST['from'] ?? $_GET['from'] ?? date('Y-m-01');
+$to = $_POST['to'] ?? $_GET['to'] ?? date('Y-m-d');
 $search = trim((string) ($_GET['q'] ?? ''));
+
+$messageInput = [
+    'lines' => is_array($_POST['lines'] ?? null) ? $_POST['lines'] : [],
+    'note' => trim((string) ($_POST['note'] ?? '')),
+    'invoice_document_id' => (int) ($_POST['invoice_document_id'] ?? 0),
+];
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['save_message', 'download'], true)) {
+    if (!isset($_POST['csrf_token']) || !Security::validateCSRFToken($_POST['csrf_token'])) {
+        flashMessage('warning', 'Invalid security token. Please try again.');
+        redirect('client-reports.php');
+    }
+
+    $report = buildClientReport($db, $companyId, $from, $to, $user['id'] ?? null, true, $messageInput);
+    if (empty($report['ok'])) {
+        flashMessage('warning', $report['error'] ?? 'Unable to build the client report.');
+        redirect('client-reports.php');
+    }
+
+    if ($action === 'save_message') {
+        logActivity($user['id'], 'create', 'Saved client update for ' . $report['company']['company_name'], 'client_reports', 0);
+        flashMessage('success', 'Client update saved. Registration records were not changed.');
+        redirect('client-reports.php?company_id=' . (int) $report['company']['id'] . '&from=' . urlencode($report['from']) . '&to=' . urlencode($report['to']) . '&q=' . urlencode($report['company']['company_name']));
+    }
+
+    $format = $_POST['format'] ?? 'html';
+    if ($format === 'csv') {
+        exportToCSV(clientReportCsvRows($report), $report['reference'] ?: 'elite-message');
+    }
+    if ($format === 'txt') {
+        header('Content-Type: text/plain; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . ($report['reference'] ?: 'client-report') . '.txt"');
+        echo renderEliteMessagesText([$report]);
+        exit;
+    }
+    header('Content-Type: text/html; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . ($report['reference'] ?: 'client-report') . '.html"');
+    echo renderEliteMessagesHtml([$report]);
+    exit;
+}
 
 if ($action === 'download' || $action === 'extract') {
     $format = $_GET['format'] ?? ($action === 'extract' ? 'txt' : 'html');
@@ -83,8 +123,8 @@ if ($action === 'download' || $action === 'extract') {
 
 $report = null;
 $reportError = '';
-if ($companyId > 0 && isset($_GET['from'], $_GET['to'])) {
-    $built = buildClientReport($db, $companyId, $from, $to, $user['id'] ?? null, true);
+if ($companyId > 0 && isset($_GET['from'], $_GET['to']) && $action !== 'download' && $action !== 'extract') {
+        $built = buildClientReport($db, $companyId, $from, $to, $user['id'] ?? null, false);
     if (!empty($built['ok'])) {
         $report = $built;
     } else {
