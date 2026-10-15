@@ -462,6 +462,36 @@ $kinForOther = $db->fetch("SELECT id FROM staff_next_of_kin WHERE user_id = 4 AN
 $kinForOwner = $db->fetch('SELECT id FROM staff_next_of_kin WHERE id = ? AND user_id = 1', [$kinId]);
 assert_true('Next of kin stays on the selected staff member', !empty($kinForOwner) && empty($kinForOther));
 $db->delete('staff_next_of_kin', 'id = :id', ['id' => $kinId]);
+$companyOptions = clientReportCompanyOptions($db, '');
+$optionIds = array_map('intval', array_column($companyOptions, 'id'));
+$filteredOptions = clientReportCompanyOptions($db, $reportForB['company']['company_name'], $reportCompanyA);
+$filteredIds = array_map('intval', array_column($filteredOptions, 'id'));
+assert_true(
+    'Client report company list loads without a search',
+    in_array($reportCompanyA, $optionIds, true) && in_array($reportCompanyB, $optionIds, true)
+);
+assert_true(
+    'Client report search keeps the selected company',
+    in_array($reportCompanyB, $filteredIds, true) && in_array($reportCompanyA, $filteredIds, true)
+);
+assert_true('Blank company name uses a visible label', clientReportCompanyLabel(['id' => 9, 'company_name' => '  ', 'rc_number' => '']) === 'Company #9');
+assert_true('Company label keeps the RC number', clientReportCompanyLabel(['id' => 9, 'company_name' => 'Acme', 'rc_number' => 'RC 1']) === 'Acme (RC 1)');
+$clientPage = file_get_contents(__DIR__ . '/../views/reports/client.php');
+$clientController = file_get_contents(__DIR__ . '/../client-reports.php');
+assert_true(
+    'Client report does not offer a txt download',
+    strpos($clientPage, 'format=txt') === false
+    && strpos($clientPage, "value='txt'") === false
+    && strpos($clientPage, 'Extract text') === false
+    && strpos($clientController, "format === 'txt'") === false
+    && strpos($clientController, '.txt') === false
+);
+assert_true(
+    'Client report prints from the browser',
+    strpos($clientPage, 'Print / Save as PDF') !== false
+    && strpos($clientPage, 'window.print()') !== false
+    && strpos($clientPage, 'no-print') !== false
+);
 $db->delete('registrations', 'company_id = :id', ['id' => $reportCompanyA]);
 $db->delete('companies', 'id = :id', ['id' => $reportCompanyA]);
 $db->delete('companies', 'id = :id', ['id' => $reportCompanyB]);

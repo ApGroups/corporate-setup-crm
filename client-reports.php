@@ -56,24 +56,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['save_message', 
         redirect('client-reports.php?company_id=' . (int) $report['company']['id'] . '&from=' . urlencode($report['from']) . '&to=' . urlencode($report['to']) . '&q=' . urlencode($report['company']['company_name']));
     }
 
-    $format = $_POST['format'] ?? 'html';
-    if ($format === 'csv') {
+    if (($_POST['format'] ?? '') === 'csv') {
         exportToCSV(clientReportCsvRows($report), $report['reference'] ?: 'elite-message');
     }
-    if ($format === 'txt') {
-        header('Content-Type: text/plain; charset=UTF-8');
-        header('Content-Disposition: attachment; filename="' . ($report['reference'] ?: 'client-report') . '.txt"');
-        echo renderEliteMessagesText([$report]);
-        exit;
-    }
-    header('Content-Type: text/html; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="' . ($report['reference'] ?: 'client-report') . '.html"');
-    echo renderEliteMessagesHtml([$report]);
-    exit;
+
+    redirect('client-reports.php?company_id=' . (int) $report['company']['id'] . '&from=' . urlencode($report['from']) . '&to=' . urlencode($report['to']));
 }
 
 if ($action === 'download' || $action === 'extract') {
-    $format = $_GET['format'] ?? ($action === 'extract' ? 'txt' : 'html');
+    $format = $_GET['format'] ?? 'html';
     $reports = [];
 
     if ($action === 'extract') {
@@ -106,17 +97,7 @@ if ($action === 'download' || $action === 'extract') {
         exportToCSV(clientReportCsvRows($reports[0]), $reports[0]['reference'] ?: 'elite-messages');
     }
 
-    if ($format === 'txt') {
-        $filename = ($action === 'extract' ? 'Elite-Monthly-Messages-' . date('Ymd') : ($reports[0]['reference'] ?: 'client-report')) . '.txt';
-        header('Content-Type: text/plain; charset=UTF-8');
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
-        echo renderEliteMessagesText($reports);
-        exit;
-    }
-
-    $filename = ($action === 'extract' ? 'Elite-Monthly-Messages-' . date('Ymd') : ($reports[0]['reference'] ?: 'client-report')) . '.html';
     header('Content-Type: text/html; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
     echo renderEliteMessagesHtml($reports);
     exit;
 }
@@ -133,21 +114,11 @@ if ($companyId > 0 && isset($_GET['from'], $_GET['to']) && $action !== 'download
 }
 
 $matches = [];
-if ($search !== '') {
-    $like = '%' . $search . '%';
-    $matches = $db->fetchAll(
-        "SELECT id, company_name, rc_number, status
-         FROM companies
-         WHERE company_name LIKE ? OR rc_number LIKE ? OR email LIKE ?
-         ORDER BY company_name
-         LIMIT 20",
-        [$like, $like, $like]
-    );
-} elseif ($companyId > 0) {
-    $matches = $db->fetchAll(
-        "SELECT id, company_name, rc_number, status FROM companies WHERE id = ?",
-        [$companyId]
-    );
+$companyListError = '';
+try {
+    $matches = clientReportCompanyOptions($db, $search, $companyId);
+} catch (Throwable $e) {
+    $companyListError = 'Companies could not be loaded. Refresh the page to try again.';
 }
 
 $history = $db->fetchAll(

@@ -1392,11 +1392,17 @@ select.form-control {
 }
 
 /* Print Styles */
+@page {
+    size: A4;
+    margin: 16mm;
+}
+
 @media print {
     .sidebar,
     .header,
     .btn,
-    .pagination {
+    .pagination,
+    .no-print {
         display: none !important;
     }
 
@@ -1406,6 +1412,31 @@ select.form-control {
 
     .page-content {
         padding: 0 !important;
+    }
+
+    .message-layout {
+        display: block !important;
+    }
+
+    .message-sheet {
+        box-shadow: none !important;
+        border: 0 !important;
+        max-width: none;
+    }
+
+    .message-sheet-header,
+    .letter-table th {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .letter-table thead {
+        display: table-header-group;
+    }
+
+    .letter-table tr {
+        break-inside: avoid;
+        page-break-inside: avoid;
     }
 }
 

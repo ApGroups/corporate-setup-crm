@@ -1,13 +1,13 @@
 <?php defined('APP_NAME') or die('Direct access not allowed'); ?>
 
-<div class="page-header">
+<div class="page-header no-print">
     <div>
         <h1 class="page-title">Client Reports</h1>
         <p class="page-subtitle">Elite compliance update for a company</p>
     </div>
 </div>
 
-<div class="card mb-6">
+<div class="card mb-6 no-print">
     <div class="card-body">
         <form method="GET" class="flex gap-4 items-end flex-wrap">
             <div class="form-group" style="margin: 0;">
@@ -16,11 +16,11 @@
             </div>
             <div class="form-group" style="margin: 0;">
                 <label class="form-label" for="company_id">Company</label>
-                <select id="company_id" name="company_id" class="form-control" style="min-width: 240px;" required>
+                <select id="company_id" name="company_id" class="form-control" style="min-width: 240px;" <?= $matches ? 'required' : '' ?>>
                     <option value="">Select a company</option>
                     <?php foreach ($matches as $match): ?>
                         <option value="<?= (int) $match['id'] ?>" <?= $companyId === (int) $match['id'] ? 'selected' : '' ?>>
-                            <?= sanitize($match['company_name']) ?><?= !empty($match['rc_number']) ? ' (' . sanitize($match['rc_number']) . ')' : '' ?>
+                            <?= sanitize(clientReportCompanyLabel($match)) ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
@@ -34,16 +34,20 @@
                 <input type="date" id="to" name="to" class="form-control" value="<?= sanitize($to) ?>" required>
             </div>
             <button type="submit" class="btn btn-primary">Preview</button>
-            <a class="btn btn-outline" href="client-reports.php?action=extract&amp;format=txt&amp;from=<?= urlencode($from) ?>&amp;to=<?= urlencode($to) ?>">Extract elite messages</a>
+            <a class="btn btn-outline" href="client-reports.php?action=extract&amp;from=<?= urlencode($from) ?>&amp;to=<?= urlencode($to) ?>" target="_blank" rel="noopener">Print elite messages</a>
         </form>
-        <?php if ($search !== '' && empty($matches)): ?>
+        <?php if ($companyListError !== ''): ?>
+            <p class="text-muted mt-2"><?= sanitize($companyListError) ?></p>
+        <?php elseif ($search !== '' && empty($matches)): ?>
             <p class="text-muted mt-2">No companies matched that search.</p>
+        <?php elseif (empty($matches)): ?>
+            <p class="text-muted mt-2">No companies are available.</p>
         <?php endif; ?>
     </div>
 </div>
 
 <?php if ($reportError !== ''): ?>
-    <div class="alert alert-warning"><?= sanitize($reportError) ?></div>
+    <div class="alert alert-warning no-print"><?= sanitize($reportError) ?></div>
 <?php endif; ?>
 
 <?php if ($report): ?>
@@ -53,8 +57,8 @@
         <input type="hidden" name="from" value="<?= sanitize($report['from']) ?>">
         <input type="hidden" name="to" value="<?= sanitize($report['to']) ?>">
 
-        <div class="grid grid-2 gap-4">
-            <div class="card">
+        <div class="grid grid-2 gap-4 message-layout">
+            <div class="card no-print">
                 <div class="card-header"><h3 class="card-title">Message wording</h3></div>
                 <div class="card-body">
                     <p class="text-muted">These edits apply to this letter only. Saved registration statuses stay unchanged.</p>
@@ -90,12 +94,10 @@
                         <button type="submit" name="action" value="save_message" class="btn btn-primary">Save message</button>
                         <button type="button" id="copyLetter" class="btn btn-outline">Copy</button>
                         <button type="button" id="restoreLetter" class="btn btn-outline">Restore generated wording</button>
-                        <button type="submit" name="action" value="download" class="btn btn-outline" onclick="document.getElementById('downloadFormat').value='txt'">Extract text</button>
-                        <button type="submit" name="action" value="download" class="btn btn-outline" onclick="document.getElementById('downloadFormat').value='html'">Download HTML</button>
                         <button type="submit" name="action" value="download" class="btn btn-outline" onclick="document.getElementById('downloadFormat').value='csv'">Download CSV</button>
-                        <button type="button" class="btn btn-outline" onclick="window.print()">Print</button>
+                        <button type="button" class="btn btn-outline" onclick="window.print()">Print / Save as PDF</button>
                     </div>
-                    <input type="hidden" name="format" id="downloadFormat" value="html">
+                    <input type="hidden" name="format" id="downloadFormat" value="csv">
                 </div>
             </div>
 
@@ -197,7 +199,7 @@
     </script>
 <?php endif; ?>
 
-<div class="card">
+<div class="card no-print">
     <div class="card-header"><h3 class="card-title">History</h3></div>
     <div class="card-body p-0">
         <?php if (empty($history)): ?>

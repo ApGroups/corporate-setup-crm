@@ -9,6 +9,58 @@ function validReportDate($value) {
     return $date && $date->format('Y-m-d') === $value ? $value : null;
 }
 
+function clientReportCompanyLabel(array $company) {
+    $name = trim((string) ($company['company_name'] ?? ''));
+    $rc = trim((string) ($company['rc_number'] ?? ''));
+    $id = (int) ($company['id'] ?? 0);
+    if ($name === '') {
+        return $rc !== '' ? $rc : 'Company #' . $id;
+    }
+
+    return $rc !== '' ? $name . ' (' . $rc . ')' : $name;
+}
+
+function clientReportCompanyOptions(Database $db, $search = '', $selectedId = 0) {
+    $search = trim((string) $search);
+    $selectedId = (int) $selectedId;
+    $params = [];
+    $where = '1=1';
+    if ($search !== '') {
+        $where = '(company_name LIKE ? OR rc_number LIKE ? OR email LIKE ?)';
+        $like = '%' . $search . '%';
+        $params = [$like, $like, $like];
+    }
+
+    $matches = $db->fetchAll(
+        "SELECT id, company_name, rc_number, status
+         FROM companies
+         WHERE $where
+         ORDER BY company_name",
+        $params
+    );
+
+    if ($selectedId > 0) {
+        $found = false;
+        foreach ($matches as $match) {
+            if ((int) $match['id'] === $selectedId) {
+                $found = true;
+                break;
+            }
+        }
+        if (!$found) {
+            $selected = $db->fetch(
+                "SELECT id, company_name, rc_number, status FROM companies WHERE id = ?",
+                [$selectedId]
+            );
+            if ($selected) {
+                array_unshift($matches, $selected);
+            }
+        }
+    }
+
+    return $matches;
+}
+
 function buildClientReport(Database $db, $companyId, $from, $to, $userId = null, $recordHistory = false, array $message = []) {
     $companyId = (int) $companyId;
     $from = validReportDate($from);
@@ -319,29 +371,40 @@ function renderEliteMessagesHtml(array $reports) {
     $html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Elite Monthly Messages</title>';
     $logoUrl = function_exists('appUrl') ? appUrl('assets/images/cslogo.png') : 'assets/images/cslogo.png';
     $html .= '<style>
+        @page { size: A4; margin: 16mm; }
         body { font-family: Georgia, serif; color: #1a1a1a; margin: 0; line-height: 1.45; background: #f4f7f5; font-size: 16px; }
         h1 { font-size: 26px; margin: 0; font-weight: 700; line-height: 1.2; }
-        .sheet { max-width: 820px; margin: 24px auto; background: #fff; }
+        .print-bar { max-width: 820px; margin: 16px auto 0; text-align: right; }
+        .print-bar button { background: #0e7a45; color: #fff; border: 0; border-radius: 6px; padding: 10px 16px; font: 600 15px Georgia, serif; cursor: pointer; }
+        .sheet { max-width: 820px; margin: 16px auto 24px; background: #fff; }
         .sheet-header { background: linear-gradient(135deg, #0e7a45 0%, #14915a 100%); color: #fff; padding: 22px 32px; display: flex; align-items: center; gap: 16px; }
         .sheet-header img { width: 64px; height: 64px; object-fit: contain; background: #fff; border-radius: 8px; padding: 4px; }
         .sheet-header p { margin: 4px 0 0; font-size: 15px; opacity: 0.95; }
         .sheet-body { padding: 28px 32px 36px; }
         h2 { font-size: 22px; margin: 0 0 12px; font-weight: 700; line-height: 1.3; }
         p { font-size: 16px; margin: 0 0 12px; }
-        article { page-break-inside: avoid; }
+        .elite-message { break-inside: auto; page-break-inside: auto; }
         .letter-table { width: 100%; border-collapse: collapse; margin: 8px 0 18px; font-size: 15px; }
         .letter-table th { background: #0e7a45; color: #fff; text-align: left; font-weight: 700; padding: 10px 12px; }
         .letter-table td { padding: 10px 12px; vertical-align: top; border-bottom: 1px solid #e3efe8; }
+        .letter-table thead { display: table-header-group; }
+        .letter-table tr { break-inside: avoid; page-break-inside: avoid; }
         .letter-table tbody tr:nth-child(odd) { background: #fff; }
         .letter-table tbody tr:nth-child(even) { background: #f3faf6; }
         .letter-table td.service { font-weight: 700; width: 42%; }
         .letter-table td.status { font-weight: 400; }
         .letter-empty { font-size: 16px; }
-        .divider { border: 0; border-top: 1px solid #d5e5db; margin: 28px 0; }
+        .divider { border: 0; height: 0; margin: 0; break-before: page; page-break-before: always; }
         a { color: #0e7a45; }
         .letter-invoice img { max-width: 100%; height: auto; border-radius: 8px; }
-        @media print { body { background: #fff; } .sheet { margin: 0; } }
+        @media print {
+            body { background: #fff; }
+            .print-bar { display: none !important; }
+            .sheet { margin: 0; max-width: none; }
+            .sheet-header, .letter-table th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
     </style></head><body>';
+    $html .= '<div class="print-bar"><button type="button" onclick="window.print()">Print / Save as PDF</button></div>';
     $html .= '<div class="sheet"><header class="sheet-header"><img src="' . htmlspecialchars($logoUrl, ENT_QUOTES, 'UTF-8') . '" alt="Corporate Setup"><div><h1>Elite Monthly Messages</h1><p>Corporate Setup</p></div></header><div class="sheet-body">';
     foreach ($reports as $index => $report) {
         if ($index > 0) {
